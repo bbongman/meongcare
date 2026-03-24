@@ -1,0 +1,12 @@
+packages:
+  "framer-motion": "For smooth page transitions and interactive animations"
+  "uuid": "For generating unique IDs for local storage items"
+  "@types/uuid": "Types for uuid"
+  "zod": "For schema validation"
+  "react-hook-form": "For form state management"
+  "@hookform/resolvers": "For integrating Zod with React Hook Form"
+  "date-fns": "For formatting creation dates"
+
+notes:
+  - This is a pure frontend application using localStorage for data persistence.
+  - The key 'meongcare_dogs' is used for storing the array of dog profiles.
