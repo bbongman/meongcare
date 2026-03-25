@@ -7,7 +7,6 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TimePicker } from "@/components/ui/time-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
@@ -398,12 +397,12 @@ export default function Schedule() {
 
       {/* Add Schedule Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-3xl max-w-sm mx-4 p-6">
-          <DialogHeader>
+        <DialogContent className="rounded-3xl max-w-sm mx-4 p-0 max-h-[85dvh] flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
             <DialogTitle className="text-xl font-bold">스케줄 추가</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-5 py-2">
+          <div className="space-y-5 px-6 pb-2 overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
             {/* Type Selector */}
             <div className="space-y-2">
               <Label className="text-sm font-bold text-muted-foreground">알림 종류</Label>
@@ -475,8 +474,22 @@ export default function Schedule() {
               />
             </div>
 
-            {/* Vaccine Date or Time */}
-            {selectedType === "vaccine" ? (
+            {/* 시간 (모든 타입 공통) */}
+            {selectedType !== "vaccine" && (
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-muted-foreground">알림 시간</Label>
+                <Input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="rounded-xl h-11"
+                  style={{ fontSize: 16 }}
+                />
+              </div>
+            )}
+
+            {/* 예방접종 날짜 */}
+            {selectedType === "vaccine" && (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-muted-foreground">예방접종 날짜</Label>
                 <Input
@@ -484,13 +497,9 @@ export default function Schedule() {
                   value={vaccineDate}
                   onChange={(e) => setVaccineDate(e.target.value)}
                   className="rounded-xl h-11"
+                  style={{ fontSize: 16 }}
                 />
                 <p className="text-xs text-muted-foreground">D-7, D-1에 자동으로 알림이 표시됩니다</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label className="text-sm font-bold text-muted-foreground">알림 시간</Label>
-                <TimePicker value={time} onChange={setTime} />
               </div>
             )}
 
@@ -513,7 +522,7 @@ export default function Schedule() {
             )}
           </div>
 
-          <DialogFooter className="flex gap-2 pt-2">
+          <DialogFooter className="flex gap-2 px-6 pb-6 pt-3 shrink-0 border-t border-border/30">
             <Button variant="outline" onClick={() => setOpen(false)} className="flex-1 rounded-xl h-11">
               취소
             </Button>
