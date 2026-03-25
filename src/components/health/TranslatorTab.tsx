@@ -46,8 +46,8 @@ export function TranslatorTab() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const selectedDog = isOtherDog ? null : (dogs?.find((d) => d.id === selectedDogId) ?? dogs?.[0] ?? null);
-  const displayName = isOtherDog ? (otherDogName.trim() || "강아지") : (displayName);
+  const selectedDog = isOtherDog ? null : (dogs.find((d) => d.id === selectedDogId) ?? dogs[0] ?? null);
+  const displayName = isOtherDog ? (otherDogName.trim() || "강아지") : (selectedDog?.name ?? "강아지");
 
   async function startRecording() {
     setError("");
