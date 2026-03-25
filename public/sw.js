@@ -1,4 +1,4 @@
-const CACHE_NAME = "meongcare-v1";
+const CACHE_NAME = "meongcare-v2";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
