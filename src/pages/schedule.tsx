@@ -70,7 +70,7 @@ export default function Schedule() {
   const [repeat, setRepeat] = useState<RepeatType>("daily");
   const [medicineName, setMedicineName] = useState("");
   const [vaccineDate, setVaccineDate] = useState("");
-  const [selectedDogId, setSelectedDogId] = useState<string>("");
+  const [selectedDogId, setSelectedDogId] = useState<string>("_all");
   const [filterType, setFilterType] = useState<ScheduleType | "all">("all");
 
   async function handleResubscribe() {
@@ -114,12 +114,12 @@ export default function Schedule() {
     setRepeat("daily");
     setMedicineName("");
     setVaccineDate("");
-    setSelectedDogId("");
+    setSelectedDogId("_all");
     setSelectedType("meal");
   }
 
   function handleSubmit() {
-    const dog = dogs.find((d) => d.id === selectedDogId);
+    const dog = selectedDogId === "_all" ? undefined : dogs.find((d) => d.id === selectedDogId);
     const finalTitle =
       title.trim() ||
       (selectedType === "medicine" && medicineName ? `${medicineName} 복용` :
@@ -131,7 +131,7 @@ export default function Schedule() {
       title: finalTitle,
       time,
       repeat,
-      dogId: selectedDogId || undefined,
+      dogId: selectedDogId === "_all" ? undefined : selectedDogId || undefined,
       dogName: dog?.name,
       medicineName: selectedType === "medicine" ? medicineName : undefined,
       vaccineDate: selectedType === "vaccine" ? vaccineDate : undefined,
@@ -435,7 +435,7 @@ export default function Schedule() {
                     <SelectValue placeholder="모든 반려견" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">모든 반려견</SelectItem>
+                    <SelectItem value="_all">모든 반려견</SelectItem>
                     {dogs.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.photo ? "" : "🐾 "}{d.name}

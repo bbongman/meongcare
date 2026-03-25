@@ -100,7 +100,7 @@ export function DogFormFields({ form, photoPreview, onPhotoChange }: DogFormFiel
 
         <FormField control={form.control} name="weight" render={({ field }) => (
           <FormItem>
-            <FormLabel className="font-semibold text-foreground/80">몸무게</FormLabel>
+            <FormLabel className="font-semibold text-foreground/80">몸무게 <span className="text-muted-foreground font-normal">(선택)</span></FormLabel>
             <FormControl>
               <div className="relative">
                 <Input type="number" step="0.1" placeholder="4.5" {...field} className="bg-secondary/50 border-transparent focus-visible:bg-background focus-visible:ring-primary/20 focus-visible:border-primary h-12 rounded-xl text-lg pr-10" />

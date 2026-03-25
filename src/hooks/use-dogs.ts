@@ -9,7 +9,7 @@ export const dogSchema = z.object({
   breed: z.string().min(1, "견종을 입력해주세요"),
   age: z.coerce.number().min(0, "올바른 나이를 입력해주세요"),
   gender: z.enum(["male", "female"]),
-  weight: z.coerce.number().min(0.1, "올바른 몸무게를 입력해주세요"),
+  weight: z.coerce.number().min(0).optional().default(0),
   neutered: z.boolean(),
   photo: z.string().nullable().optional(), // base64 string
 });

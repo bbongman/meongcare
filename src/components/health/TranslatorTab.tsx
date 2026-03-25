@@ -33,6 +33,8 @@ export function TranslatorTab() {
   const chunksRef = useRef<Blob[]>([]);
 
   const [selectedDogId, setSelectedDogId] = useState<string | null>(null);
+  const [isOtherDog, setIsOtherDog] = useState(false);
+  const [otherDogName, setOtherDogName] = useState("");
   const [context, setContext] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [recorded, setRecorded] = useState(false);
@@ -44,7 +46,8 @@ export function TranslatorTab() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const selectedDog = dogs?.find((d) => d.id === selectedDogId) ?? dogs?.[0] ?? null;
+  const selectedDog = isOtherDog ? null : (dogs?.find((d) => d.id === selectedDogId) ?? dogs?.[0] ?? null);
+  const displayName = isOtherDog ? (otherDogName.trim() || "강아지") : (displayName);
 
   async function startRecording() {
     setError("");
@@ -126,14 +129,14 @@ export function TranslatorTab() {
         body: JSON.stringify({
           audioBase64: base64,
           mimeType: audioBlob.type,
-          dog: selectedDog,
+          dog: isOtherDog ? (otherDogName.trim() ? { name: otherDogName.trim() } : null) : selectedDog,
           context,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setResult(data);
-      addItem("translation", selectedDog?.name ?? "강아지", `녹음 / ${context ?? "상황 미선택"}`, data);
+      addItem("translation", displayName, `녹음 / ${context ?? "상황 미선택"}`, data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -144,9 +147,39 @@ export function TranslatorTab() {
   return (
     <div className="space-y-4">
       {/* 강아지 선택 */}
-      {dogs && dogs.length > 0 && (
-        <DogSelector dogs={dogs} selectedId={selectedDogId} onSelect={setSelectedDogId} />
-      )}
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setIsOtherDog(false)}
+            className={cn(
+              "flex-1 py-2 rounded-xl text-xs font-bold border transition-all",
+              !isOtherDog ? "bg-primary text-white border-primary" : "bg-card border-border/50 text-muted-foreground"
+            )}
+          >
+            내 강아지
+          </button>
+          <button
+            onClick={() => setIsOtherDog(true)}
+            className={cn(
+              "flex-1 py-2 rounded-xl text-xs font-bold border transition-all",
+              isOtherDog ? "bg-primary text-white border-primary" : "bg-card border-border/50 text-muted-foreground"
+            )}
+          >
+            다른 강아지
+          </button>
+        </div>
+        {!isOtherDog && dogs && dogs.length > 0 ? (
+          <DogSelector dogs={dogs} selectedId={selectedDogId} onSelect={setSelectedDogId} />
+        ) : isOtherDog ? (
+          <input
+            type="text"
+            value={otherDogName}
+            onChange={(e) => setOtherDogName(e.target.value)}
+            placeholder="강아지 이름 (선택)"
+            className="w-full h-10 px-3 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
+          />
+        ) : null}
+      </div>
 
       {/* 녹음 영역 */}
       <div className="rounded-2xl border border-border/50 bg-card p-5 flex flex-col items-center gap-4">
@@ -236,7 +269,7 @@ export function TranslatorTab() {
             </div>
 
             <div className="bg-white rounded-xl p-4 border border-border/40">
-              <p className="text-xs text-primary font-semibold mb-1">🐶 {selectedDog?.name ?? "강아지"}의 말</p>
+              <p className="text-xs text-primary font-semibold mb-1">🐶 {displayName}의 말</p>
               <p className="text-sm text-foreground leading-relaxed">{result.translation}</p>
             </div>
 
@@ -253,7 +286,7 @@ export function TranslatorTab() {
               </button>
               <button
                 onClick={() => {
-                  const text = `🐶 ${selectedDog?.name ?? "강아지"}의 말\n\n${result.moodEmoji} ${result.mood}\n"${result.translation}"\n\n멍케어 AI 번역기`;
+                  const text = `🐶 ${displayName}의 말\n\n${result.moodEmoji} ${result.mood}\n"${result.translation}"\n\n멍케어 AI 번역기`;
                   if (navigator.share) {
                     navigator.share({ text });
                   } else {
