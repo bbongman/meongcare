@@ -27,7 +27,7 @@ interface TranslateResult {
 }
 
 export function TranslatorTab() {
-  const { data: dogs } = useDogs();
+  const { data: dogs = [] } = useDogs();
   const { addItem } = useHealthHistory();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -168,7 +168,7 @@ export function TranslatorTab() {
             다른 강아지
           </button>
         </div>
-        {!isOtherDog && dogs && dogs.length > 0 ? (
+        {!isOtherDog && dogs.length > 0 ? (
           <DogSelector dogs={dogs} selectedId={selectedDogId} onSelect={setSelectedDogId} />
         ) : isOtherDog ? (
           <input

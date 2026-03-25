@@ -48,19 +48,14 @@ const saveDogsToStorage = (dogs: Dog[]) => {
 export function useDogs() {
   return useQuery({
     queryKey: ["dogs"],
-    queryFn: async () => {
-      // Simulate slight network delay for realistic feel
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      return getDogsFromStorage();
-    },
+    queryFn: () => getDogsFromStorage(),
   });
 }
 
 export function useDog(id: string) {
   return useQuery({
     queryKey: ["dogs", id],
-    queryFn: async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    queryFn: () => {
       const dogs = getDogsFromStorage();
       return dogs.find((d) => d.id === id) || null;
     },
@@ -72,8 +67,6 @@ export function useAddDog() {
   
   return useMutation({
     mutationFn: async (data: DogInput) => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      
       const newDog: Dog = {
         ...data,
         id: uuidv4(),
@@ -97,7 +90,6 @@ export function useUpdateDog() {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: DogInput }) => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
       const currentDogs = getDogsFromStorage();
       const updatedDogs = currentDogs.map((d) =>
         d.id === id ? { ...d, ...data } : d
@@ -116,8 +108,6 @@ export function useDeleteDog() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      
       const currentDogs = getDogsFromStorage();
       const updatedDogs = currentDogs.filter((d) => d.id !== id);
       saveDogsToStorage(updatedDogs);
