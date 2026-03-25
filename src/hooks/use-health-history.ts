@@ -25,6 +25,7 @@ export interface ProductResult {
   category: string;
   description: string;
   mainIngredients: string[];
+  feedingGuide?: string;
   suitableAge: string;
   cautions: string[];
   rating: "추천" | "보통" | "주의";

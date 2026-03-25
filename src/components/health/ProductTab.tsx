@@ -11,6 +11,7 @@ interface ProductResult {
   category: string;
   description: string;
   mainIngredients: string[];
+  feedingGuide?: string;
   suitableAge: string;
   cautions: string[];
   rating: "추천" | "보통" | "주의";
@@ -180,6 +181,12 @@ export function ProductTab() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">적합 나이</p>
                 <p className="text-sm text-foreground">{result.suitableAge}</p>
               </div>
+              {result.feedingGuide && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">급여 가이드</p>
+                  <p className="text-sm text-blue-800 font-medium">{result.feedingGuide}</p>
+                </div>
+              )}
             </div>
 
             {result.cautions?.length > 0 && (
