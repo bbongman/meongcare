@@ -242,14 +242,43 @@ function WheelCol({
   );
 }
 
-// ── 타임피커 ──────────────────────────────────────────────────────────────────
-export function TimePicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
+// ── 모바일 감지 ──────────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() =>
+    typeof window !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  );
+  return mobile;
+}
+
+// ── 모바일 네이티브 타임피커 ──────────────────────────────────────────────────
+function NativeTimePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [hStr, mStr] = value.split(":");
+  const h24 = parseInt(hStr ?? "8", 10);
+  const min = parseInt(mStr ?? "0", 10);
+  const isPM = h24 >= 12;
+  const hour12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+
+  const displayTime = `${isPM ? "오후" : "오전"} ${hour12}:${String(min).padStart(2, "0")}`;
+
+  return (
+    <div className="relative">
+      <input
+        type="time"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+        style={{ fontSize: 16 }}
+      />
+      <div className="flex items-center justify-center rounded-2xl border border-border/60 bg-card px-4 py-4 gap-2 cursor-pointer">
+        <span className="text-2xl font-bold text-foreground">{displayTime}</span>
+        <span className="text-xs text-muted-foreground">터치하여 변경</span>
+      </div>
+    </div>
+  );
+}
+
+// ── 데스크톱 커스텀 타임피커 ──────────────────────────────────────────────────
+function DesktopTimePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [hStr, mStr] = value.split(":");
   const h24 = parseInt(hStr ?? "8", 10);
   const min = parseInt(mStr ?? "0", 10);
@@ -257,7 +286,7 @@ export function TimePicker({
   const isPM = h24 >= 12;
   const hour12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
   const ampmIdx = isPM ? 1 : 0;
-  const hourIdx = hour12 - 1; // 0~11
+  const hourIdx = hour12 - 1;
 
   function toH24(ampmI: number, hourI: number) {
     const h12 = hourI + 1;
@@ -270,7 +299,7 @@ export function TimePicker({
   }
 
   return (
-    <div className="flex items-center rounded-2xl border border-border/60 bg-card overflow-hidden px-1 py-1 gap-0.5" style={{ touchAction: "pan-y" }}>
+    <div className="flex items-center rounded-2xl border border-border/60 bg-card overflow-hidden px-1 py-1 gap-0.5">
       <SimpleCol
         items={AM_PM}
         selectedIndex={ampmIdx}
@@ -293,4 +322,12 @@ export function TimePicker({
       />
     </div>
   );
+}
+
+// ── 타임피커 (모바일: 네이티브 / 데스크톱: 커스텀 휠) ─────────────────────────
+export function TimePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const isMobile = useIsMobile();
+  return isMobile
+    ? <NativeTimePicker value={value} onChange={onChange} />
+    : <DesktopTimePicker value={value} onChange={onChange} />;
 }
