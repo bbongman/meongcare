@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
-import { Home, MapPin, HeartPulse, Sparkles, CalendarClock } from "lucide-react";
+import { Home, MapPin, HeartPulse, Sparkles, CalendarClock, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -8,6 +9,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
+  const { user, logout } = useAuth();
 
   const navItems = [
     { path: "/", label: "홈", icon: Home },
@@ -19,6 +21,17 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="h-[100dvh] bg-background flex flex-col relative w-full max-w-md mx-auto shadow-2xl shadow-black/5 overflow-hidden border-x border-border/50">
+      {/* 사용자 바 */}
+      {user && (
+        <div className="flex items-center justify-between px-5 pt-2 pb-0 shrink-0">
+          <p className="text-xs text-muted-foreground font-medium">{user.name}</p>
+          <button onClick={logout} className="flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-red-400 transition-colors">
+            <LogOut className="w-3 h-3" />
+            로그아웃
+          </button>
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto pb-28 hide-scrollbar" style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom))" }}>
         {children}
       </main>

@@ -1,13 +1,84 @@
 import express from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import webpush from "web-push";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
+import crypto from "crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "10mb" }));
+
+// ── JWT 시크릿 ──────────────────────────────────────────────────────────────
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
+
+// ── 사용자 저장소 (JSON 파일) ────────────────────────────────────────────────
+const DATA_DIR = path.join(__dirname, "data");
+if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+const USERS_FILE = path.join(DATA_DIR, "users.json");
+
+function loadUsers() {
+  if (!existsSync(USERS_FILE)) return [];
+  try { return JSON.parse(readFileSync(USERS_FILE, "utf8")); } catch { return []; }
+}
+function saveUsers(users) {
+  writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
+// ── 인증 미들웨어 ────────────────────────────────────────────────────────────
+function authMiddleware(req, res, next) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return res.status(401).json({ error: "로그인이 필요해요." });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: "세션이 만료됐어요. 다시 로그인해주세요." });
+  }
+}
+
+// ── 회원가입 / 로그인 API ────────────────────────────────────────────────────
+app.post("/api/auth/register", async (req, res) => {
+  const { name, password } = req.body;
+  if (!name?.trim() || !password) return res.status(400).json({ error: "이름과 비밀번호를 입력해주세요." });
+  if (password.length < 4) return res.status(400).json({ error: "비밀번호는 4자 이상이어야 해요." });
+
+  const users = loadUsers();
+  if (users.find((u) => u.name === name.trim())) {
+    return res.status(409).json({ error: "이미 사용 중인 이름이에요." });
+  }
+
+  const id = crypto.randomUUID();
+  const hash = await bcrypt.hash(password, 10);
+  const user = { id, name: name.trim(), hash, createdAt: new Date().toISOString() };
+  users.push(user);
+  saveUsers(users);
+
+  const token = jwt.sign({ id, name: user.name }, JWT_SECRET, { expiresIn: "30d" });
+  res.json({ token, user: { id, name: user.name } });
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { name, password } = req.body;
+  if (!name?.trim() || !password) return res.status(400).json({ error: "이름과 비밀번호를 입력해주세요." });
+
+  const users = loadUsers();
+  const user = users.find((u) => u.name === name.trim());
+  if (!user) return res.status(401).json({ error: "존재하지 않는 사용자예요." });
+
+  const valid = await bcrypt.compare(password, user.hash);
+  if (!valid) return res.status(401).json({ error: "비밀번호가 틀렸어요." });
+
+  const token = jwt.sign({ id: user.id, name: user.name }, JWT_SECRET, { expiresIn: "30d" });
+  res.json({ token, user: { id: user.id, name: user.name } });
+});
+
+app.get("/api/auth/me", authMiddleware, (req, res) => {
+  res.json({ user: { id: req.user.id, name: req.user.name } });
+});
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -48,10 +119,10 @@ app.get("/api/vapid-public-key", (req, res) => {
 });
 
 app.post("/api/push-subscribe", (req, res) => {
-  const { subscription, clientId } = req.body;
+  const { subscription, clientId, userId } = req.body;
   if (!subscription || !clientId) return res.status(400).json({ error: "missing fields" });
-  subscriptions.set(clientId, subscription);
-  console.log(`📱 푸시 구독 등록: ${clientId} (총 ${subscriptions.size}개)`);
+  subscriptions.set(clientId, { ...subscription, userId: userId || null });
+  console.log(`📱 푸시 구독 등록: ${clientId} userId=${userId || "anonymous"} (총 ${subscriptions.size}개)`);
   res.json({ ok: true });
 });
 
@@ -63,17 +134,29 @@ app.delete("/api/push-unsubscribe", (req, res) => {
 
 // ── 스케줄 동기화 ─────────────────────────────────────────────────────────────
 app.post("/api/schedules/sync", (req, res) => {
-  const { schedules } = req.body;
+  const { schedules, userId } = req.body;
   if (!Array.isArray(schedules)) return res.status(400).json({ error: "schedules must be array" });
-  serverSchedules.clear();
-  schedules.forEach((s) => serverSchedules.set(s.id, s));
-  console.log(`🗓️ 스케줄 동기화: ${schedules.length}개`);
+  // 해당 userId의 기존 스케줄만 제거 후 재등록
+  if (userId) {
+    for (const [id, s] of serverSchedules) {
+      if (s._userId === userId) serverSchedules.delete(id);
+    }
+  } else {
+    serverSchedules.clear();
+  }
+  schedules.forEach((s) => serverSchedules.set(s.id, { ...s, _userId: userId || null }));
+  console.log(`🗓️ 스케줄 동기화: ${schedules.length}개 (userId=${userId || "anonymous"})`);
   res.json({ ok: true });
 });
 
 // ── 테스트 알림 ───────────────────────────────────────────────────────────────
 app.post("/api/push-test", async (req, res) => {
-  if (subscriptions.size === 0) {
+  const { userId } = req.body;
+  const targets = [...subscriptions.entries()].filter(([, sub]) => {
+    if (userId && sub.userId) return sub.userId === userId;
+    return true;
+  });
+  if (targets.length === 0) {
     return res.status(400).json({ error: "등록된 구독자가 없어요. 알림 허용 버튼을 먼저 눌러주세요." });
   }
   const payload = JSON.stringify({
@@ -81,12 +164,13 @@ app.post("/api/push-test", async (req, res) => {
     body: "푸시 알림이 정상 작동하고 있어요!",
   });
   const results = await Promise.allSettled(
-    [...subscriptions.entries()].map(([clientId, sub]) =>
-      webpush.sendNotification(sub, payload).catch((err) => {
+    targets.map(([clientId, sub]) => {
+      const pushSub = { endpoint: sub.endpoint, keys: sub.keys };
+      return webpush.sendNotification(pushSub, payload).catch((err) => {
         if (err.statusCode === 410 || err.statusCode === 404) subscriptions.delete(clientId);
         throw err;
-      })
-    )
+      });
+    })
   );
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
   console.log(`🔔 테스트 알림: ${succeeded}/${results.length} 성공`);
@@ -94,10 +178,13 @@ app.post("/api/push-test", async (req, res) => {
 });
 
 // ── 스케줄 알림 발송 ──────────────────────────────────────────────────────────
-function sendPushToAll(payload) {
+function sendPushToUser(userId, payload) {
   const text = JSON.stringify(payload);
   for (const [clientId, sub] of subscriptions) {
-    webpush.sendNotification(sub, text).catch((err) => {
+    // userId가 일치하거나, 둘 다 없으면(레거시) 전송
+    if (userId && sub.userId && sub.userId !== userId) continue;
+    const pushSub = { endpoint: sub.endpoint, keys: sub.keys };
+    webpush.sendNotification(pushSub, text).catch((err) => {
       if (err.statusCode === 410 || err.statusCode === 404) {
         subscriptions.delete(clientId);
       }
@@ -128,7 +215,7 @@ function checkSchedules() {
       if (diff === 7 || diff === 1 || diff === 0) {
         firedThisMinute.set(id, fireKey);
         const label = diff === 0 ? "오늘이에요!" : `D-${diff}이에요!`;
-        sendPushToAll({
+        sendPushToUser(s._userId, {
           title: `💉 예방접종 알림`,
           body: s.dogName ? `${s.dogName}의 ${s.title} ${label}` : `${s.title} ${label}`,
         });
@@ -153,7 +240,7 @@ function checkSchedules() {
     if (!shouldFire) continue;
 
     firedThisMinute.set(id, hhmm);
-    sendPushToAll({
+    sendPushToUser(s._userId, {
       title: `🐾 ${s.title}`,
       body: s.dogName ? `${s.dogName}의 ${s.title} 시간이에요!` : `${s.title} 시간이에요!`,
     });

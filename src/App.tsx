@@ -5,7 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { X } from "lucide-react";
 
+import { useAuth } from "@/hooks/use-auth";
+
 // Pages
+import Login from "./pages/login";
 import Home from "./pages/home";
 import Map from "./pages/map";
 import Health from "./pages/health";
@@ -84,15 +87,35 @@ function InstallBanner() {
   );
 }
 
+function AuthGate() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center">
+        <img src="/icons/icon-96x96.png" alt="" className="w-14 h-14 rounded-2xl animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!user) return <Login />;
+
+  return (
+    <>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <Router />
+      </WouterRouter>
+      <InstallBanner />
+    </>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
+        <AuthGate />
         <Toaster />
-        <InstallBanner />
       </TooltipProvider>
     </QueryClientProvider>
   );

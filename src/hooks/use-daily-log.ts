@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { userKey } from "@/lib/user-storage";
 
 export interface DailyLog {
   id: string;
@@ -13,25 +14,20 @@ export interface DailyLog {
   memo: string;
 }
 
-const STORAGE_KEY = "meongcare_daily_logs";
-let _cache: DailyLog[] | null = null;
+const BASE_KEY = "meongcare_daily_logs";
 
 function load(): DailyLog[] {
-  if (_cache) return _cache;
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    _cache = data ? JSON.parse(data) : [];
-    return _cache!;
+    const data = localStorage.getItem(userKey(BASE_KEY));
+    return data ? JSON.parse(data) : [];
   } catch {
-    _cache = [];
-    return _cache;
+    return [];
   }
 }
 
 function save(logs: DailyLog[]) {
-  _cache = logs;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+    localStorage.setItem(userKey(BASE_KEY), JSON.stringify(logs));
   } catch (e) {
     console.error("Failed to save daily logs", e);
   }

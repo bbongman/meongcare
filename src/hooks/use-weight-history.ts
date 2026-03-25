@@ -1,28 +1,24 @@
 import { useState, useCallback } from "react";
+import { userKey } from "@/lib/user-storage";
 
 export interface WeightRecord {
   date: string; // YYYY-MM-DD
   weight: number;
 }
 
-const STORAGE_KEY = "meongcare_weight_history";
-let _cache: Record<string, WeightRecord[]> | null = null;
+const BASE_KEY = "meongcare_weight_history";
 
 function load(): Record<string, WeightRecord[]> {
-  if (_cache) return _cache;
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    _cache = data ? JSON.parse(data) : {};
-    return _cache!;
+    const data = localStorage.getItem(userKey(BASE_KEY));
+    return data ? JSON.parse(data) : {};
   } catch {
-    _cache = {};
-    return _cache;
+    return {};
   }
 }
 
 function save(data: Record<string, WeightRecord[]>) {
-  _cache = data;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(userKey(BASE_KEY), JSON.stringify(data));
 }
 
 export function useWeightHistory(dogId: string) {

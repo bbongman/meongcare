@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { userKey } from "@/lib/user-storage";
 
 // --- Schema & Types ---
 export const dogSchema = z.object({
@@ -20,11 +21,11 @@ export interface Dog extends DogInput {
   createdAt: string;
 }
 
-const STORAGE_KEY = "meongcare_dogs";
+const BASE_KEY = "meongcare_dogs";
 
 // --- Helpers ---
 const getDogsFromStorage = (): Dog[] => {
-  const data = localStorage.getItem(STORAGE_KEY);
+  const data = localStorage.getItem(userKey(BASE_KEY));
   if (!data) return [];
   try {
     return JSON.parse(data);
@@ -36,7 +37,7 @@ const getDogsFromStorage = (): Dog[] => {
 
 const saveDogsToStorage = (dogs: Dog[]) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dogs));
+    localStorage.setItem(userKey(BASE_KEY), JSON.stringify(dogs));
   } catch (e) {
     console.error("Failed to save dogs to local storage", e);
   }

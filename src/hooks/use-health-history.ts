@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { userKey } from "@/lib/user-storage";
 
 export type HistoryType = "consultation" | "translation" | "product";
 
@@ -41,26 +42,19 @@ export interface HistoryItem {
   result: HistoryResult;
 }
 
-const STORAGE_KEY = "meongcare_health_history";
-
-// 모듈 레벨 캐시 — 여러 컴포넌트가 동시에 마운트돼도 localStorage는 1번만 읽음
-let _cache: HistoryItem[] | null = null;
+const BASE_KEY = "meongcare_health_history";
 
 function loadHistory(): HistoryItem[] {
-  if (_cache) return _cache;
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    _cache = data ? JSON.parse(data) : [];
-    return _cache!;
+    const data = localStorage.getItem(userKey(BASE_KEY));
+    return data ? JSON.parse(data) : [];
   } catch {
-    _cache = [];
-    return _cache;
+    return [];
   }
 }
 
 function saveHistory(items: HistoryItem[]) {
-  _cache = items;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(userKey(BASE_KEY), JSON.stringify(items));
 }
 
 export function useHealthHistory() {

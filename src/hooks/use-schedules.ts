@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { v4 as uuidv4 } from "uuid";
+import { userKey } from "@/lib/user-storage";
+import { getAuthUserId } from "@/hooks/use-auth";
 
 export type ScheduleType = "meal" | "medicine" | "walk" | "vaccine";
 export type RepeatType = "daily" | "weekly" | "monthly" | "none";
@@ -18,10 +20,10 @@ export interface Schedule {
   createdAt: string;
 }
 
-const STORAGE_KEY = "meongcare_schedules";
+const BASE_KEY = "meongcare_schedules";
 
 const getSchedulesFromStorage = (): Schedule[] => {
-  const data = localStorage.getItem(STORAGE_KEY);
+  const data = localStorage.getItem(userKey(BASE_KEY));
   if (!data) return [];
   try {
     return JSON.parse(data);
@@ -31,15 +33,16 @@ const getSchedulesFromStorage = (): Schedule[] => {
 };
 
 const saveSchedulesToStorage = (schedules: Schedule[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(schedules));
+  localStorage.setItem(userKey(BASE_KEY), JSON.stringify(schedules));
 };
 
 export function syncSchedulesToServer() {
   const schedules = getSchedulesFromStorage();
+  const userId = getAuthUserId();
   fetch("/api/schedules/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ schedules }),
+    body: JSON.stringify({ schedules, userId }),
   }).catch(() => {});
 }
 

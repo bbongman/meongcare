@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getAuthUserId } from "@/hooks/use-auth";
 
 const CLIENT_ID_KEY = "meongcare_push_client_id";
 
@@ -20,10 +21,11 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 async function reRegisterWithServer(sub: PushSubscription) {
   const clientId = getOrCreateClientId();
+  const userId = getAuthUserId();
   await fetch("/api/push-subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ subscription: sub.toJSON(), clientId }),
+    body: JSON.stringify({ subscription: sub.toJSON(), clientId, userId }),
   }).catch(() => {});
 }
 
@@ -67,6 +69,7 @@ export function usePushNotifications() {
         body: JSON.stringify({
           subscription: sub.toJSON(),
           clientId: getOrCreateClientId(),
+          userId: getAuthUserId(),
         }),
       });
 
