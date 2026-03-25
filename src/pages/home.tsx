@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check, Stethoscope, ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,6 +9,9 @@ import { EditDogDialog } from "@/components/edit-dog-dialog";
 import { DailyCheckDialog } from "@/components/daily-check-dialog";
 import { useDailyLog } from "@/hooks/use-daily-log";
 import { useSchedules, useAddSchedule, syncSchedulesToServer } from "@/hooks/use-schedules";
+import { useVetVisits } from "@/hooks/use-vet-visits";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -108,6 +111,53 @@ function HealthTipWidget({ dog }: { dog: Dog }) {
       <div className="min-w-0">
         <p className="text-xs font-bold text-blue-600 mb-0.5">{dog.name} 건강 팁 · {tip.title}</p>
         <p className="text-xs text-blue-800/80 leading-relaxed">{tip.body}</p>
+      </div>
+    </div>
+  );
+}
+
+function RecentVetVisitWidget() {
+  const { getRecent } = useVetVisits();
+  const [, setLocation] = useLocation();
+  const recent = getRecent(2);
+
+  if (recent.length === 0) return null;
+
+  return (
+    <div className="bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-100 rounded-3xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-sm">
+            <Stethoscope className="w-4 h-4 text-teal-600" />
+          </div>
+          <p className="text-xs font-bold text-teal-700">최근 검진 기록</p>
+        </div>
+        <button
+          onClick={() => setLocation("/health")}
+          className="text-[11px] font-semibold text-teal-600 flex items-center gap-0.5 hover:text-teal-800 transition-colors"
+        >
+          전체보기 <ChevronRight className="w-3 h-3" />
+        </button>
+      </div>
+      <div className="space-y-2">
+        {recent.map((visit) => (
+          <div key={visit.id} className="bg-white/70 rounded-xl px-3 py-2.5 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-foreground truncate">{visit.hospitalName || "병원명 미입력"}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[11px] text-muted-foreground">
+                  {visit.visitDate ? format(new Date(visit.visitDate), "M.dd (EEE)", { locale: ko }) : "날짜 미입력"}
+                </span>
+                {visit.diagnosis && (
+                  <span className="text-[11px] text-teal-600 font-medium truncate">{visit.diagnosis}</span>
+                )}
+              </div>
+            </div>
+            {visit.totalPrice > 0 && (
+              <span className="text-xs font-bold text-foreground shrink-0">{visit.totalPrice.toLocaleString()}원</span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -376,6 +426,9 @@ export default function Home() {
 
             {/* 매일 건강 체크 리마인더 */}
             <DailyReminderBanner />
+
+            {/* 최근 검진 기록 */}
+            <RecentVetVisitWidget />
 
             {/* 나이 기반 건강 팁 */}
             {dogs[0] && <HealthTipWidget dog={dogs[0]} />}

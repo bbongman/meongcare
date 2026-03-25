@@ -558,6 +558,64 @@ app.post("/api/analyze-product", async (req, res) => {
   }
 });
 
+// ── 영수증/진단서 OCR 분석 API ─────────────────────────────────────────────
+app.post("/api/parse-receipt", async (req, res) => {
+  const { imageBase64, mediaType, dog } = req.body;
+  if (!imageBase64) return res.status(400).json({ error: "이미지를 업로드해주세요." });
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: "ANTHROPIC_API_KEY가 설정되지 않았습니다." });
+  }
+
+  const dogInfo = dog
+    ? `\n보호자 강아지 정보: 이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살, 체중: ${dog.weight}kg`
+    : "";
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 },
+          },
+          {
+            type: "text",
+            text: `이 동물병원 영수증/진료확인서/진단서 사진을 분석해서 진료 내역을 추출해주세요.${dogInfo}
+
+사진이 영수증이 아니거나 동물병원과 관련 없는 경우에도 최대한 관련 정보를 추출해주세요.
+읽기 어려운 부분은 "판독 불가"로 표시하세요.
+
+다음 JSON 형식으로만 응답해주세요:
+{
+  "hospitalName": "병원 이름 (읽을 수 없으면 빈 문자열)",
+  "visitDate": "방문 날짜 YYYY-MM-DD 형식 (읽을 수 없으면 빈 문자열)",
+  "items": [
+    { "name": "진료 항목명", "price": 금액(숫자, 없으면 0) }
+  ],
+  "totalPrice": 총 금액(숫자, 없으면 0),
+  "diagnosis": "진단명 또는 주요 소견 (없으면 빈 문자열)",
+  "prescriptions": ["처방 약품명1", "처방 약품명2"],
+  "nextVisitDate": "다음 내원일 YYYY-MM-DD (없으면 빈 문자열)",
+  "notes": "기타 특이사항 (없으면 빈 문자열)",
+  "confidence": "인식 신뢰도 high/medium/low"
+}`,
+          },
+        ],
+      }],
+    });
+    const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("파싱 실패");
+    res.json(JSON.parse(jsonMatch[0]));
+  } catch (err) {
+    console.error("parse-receipt error:", err);
+    res.status(500).json({ error: err.message || "영수증 분석 중 오류가 발생했습니다." });
+  }
+});
+
 // ── 프론트엔드 정적 파일 서빙 (프로덕션) ────────────────────────────────────
 const distDir = path.join(__dirname, "dist/public");
 if (existsSync(distDir)) {
