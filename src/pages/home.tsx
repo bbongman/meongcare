@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell } from "lucide-react";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
 import { Layout } from "@/components/layout";
@@ -7,6 +7,7 @@ import { AddDogDialog } from "@/components/add-dog-dialog";
 import { EditDogDialog } from "@/components/edit-dog-dialog";
 import { DailyCheckDialog } from "@/components/daily-check-dialog";
 import { useDailyLog } from "@/hooks/use-daily-log";
+import { useSchedules, useAddSchedule, syncSchedulesToServer } from "@/hooks/use-schedules";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion, AnimatePresence } from "framer-motion";
@@ -96,6 +97,38 @@ function HealthTipWidget({ dog }: { dog: Dog }) {
         <p className="text-xs text-blue-800/80 leading-relaxed">{tip.body}</p>
       </div>
     </div>
+  );
+}
+
+function DailyReminderBanner() {
+  const { data: schedules = [] } = useSchedules();
+  const addSchedule = useAddSchedule();
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem("daily_reminder_dismissed") === "1");
+
+  const hasReminder = schedules.some((s) => s.title.includes("건강 체크") && s.repeat === "daily");
+  if (hasReminder || dismissed) return null;
+
+  function setup() {
+    addSchedule.mutate({
+      type: "meal",
+      title: "오늘 건강 체크",
+      time: "20:00",
+      repeat: "daily",
+      enabled: true,
+    }, {
+      onSuccess: () => { syncSchedulesToServer(); setDismissed(true); localStorage.setItem("daily_reminder_dismissed", "1"); },
+    });
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-100 rounded-2xl px-4 py-3 flex items-center gap-3">
+      <Bell className="w-4 h-4 text-violet-500 shrink-0" />
+      <p className="text-xs text-violet-700 flex-1 font-medium">매일 저녁 8시에 건강 체크 알림 받기</p>
+      <div className="flex gap-1.5 shrink-0">
+        <button onClick={() => { setDismissed(true); localStorage.setItem("daily_reminder_dismissed", "1"); }} className="text-xs text-muted-foreground px-2 py-1 rounded-lg hover:bg-white/60">나중에</button>
+        <button onClick={setup} disabled={addSchedule.isPending} className="text-xs font-bold text-white bg-violet-500 px-3 py-1 rounded-lg hover:bg-violet-600 transition-colors">설정</button>
+      </div>
+    </motion.div>
   );
 }
 
@@ -235,6 +268,9 @@ export default function Home() {
                 ))}
               </AnimatePresence>
             </div>
+
+            {/* 매일 건강 체크 리마인더 */}
+            <DailyReminderBanner />
 
             {/* 나이 기반 건강 팁 */}
             {dogs[0] && <HealthTipWidget dog={dogs[0]} />}

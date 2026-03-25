@@ -2,13 +2,15 @@ import { useState } from "react";
 import { Layout } from "@/components/layout";
 import { ConsultationTab } from "@/components/health/ConsultationTab";
 import { HistoryTab } from "@/components/health/HistoryTab";
+import { StatsTab } from "@/components/health/StatsTab";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Tab = "consultation" | "history";
+type Tab = "consultation" | "stats" | "history";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "consultation", label: "AI 문진", emoji: "🩺" },
+  { id: "stats", label: "통계", emoji: "📊" },
   { id: "history", label: "히스토리", emoji: "📋" },
 ];
 
@@ -48,6 +50,7 @@ export default function Health() {
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.15 }}>
             {activeTab === "consultation" && <ConsultationTab />}
+            {activeTab === "stats" && <StatsTab />}
             {activeTab === "history" && <HistoryTab />}
           </motion.div>
         </AnimatePresence>

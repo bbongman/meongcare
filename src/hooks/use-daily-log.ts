@@ -53,5 +53,14 @@ export function useDailyLog(dogId: string) {
     });
   }, [dogId, today]);
 
-  return { todayLog, saveLog };
+  const recentLogs = (days: number) => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days + 1);
+    cutoff.setHours(0, 0, 0, 0);
+    return logs
+      .filter((l) => l.dogId === dogId && new Date(l.date) >= cutoff)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  return { todayLog, saveLog, recentLogs };
 }

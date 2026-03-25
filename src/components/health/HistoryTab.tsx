@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useHealthHistory, HistoryItem, ConsultationResult, TranslationResult, ProductResult } from "@/hooks/use-health-history";
-import { Trash2, ChevronDown, ChevronUp, Copy } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, Copy, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -36,6 +36,24 @@ function HistoryCard({ item, onRemove }: { item: HistoryItem; onRemove: () => vo
   const cfg = TYPE_CONFIG[item.type];
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(buildShareText(item));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleShare() {
+    const text = buildShareText(item);
+    if (navigator.share) {
+      await navigator.share({ text }).catch(() => {});
+    } else {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
 
   return (
     <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
@@ -49,13 +67,11 @@ function HistoryCard({ item, onRemove }: { item: HistoryItem; onRemove: () => vo
             <span className="text-xs text-muted-foreground font-medium">{item.dogName}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(buildShareText(item));
-                alert("클립보드에 복사됐어요!");
-              }}
-              className="text-muted-foreground/40 hover:text-primary transition-colors p-1"
-            >
+            {copied && <span className="text-[10px] text-green-500 font-bold">복사됨</span>}
+            <button onClick={handleShare} className="text-muted-foreground/40 hover:text-primary transition-colors p-1" title="공유">
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleCopy} className="text-muted-foreground/40 hover:text-primary transition-colors p-1" title="복사">
               <Copy className="w-3.5 h-3.5" />
             </button>
             {confirmDelete ? (

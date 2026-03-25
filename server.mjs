@@ -102,13 +102,38 @@ function checkSchedules() {
   if (subscriptions.size === 0) return;
   const now = new Date();
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const todayStr = now.toISOString().slice(0, 10);
 
   for (const [id, s] of serverSchedules) {
-    if (!s.enabled || s.type === "vaccine") continue;
-    if (s.time !== hhmm) continue;
-    if (firedThisMinute.get(id) === hhmm) continue; // 이미 이 분에 발송
+    if (!s.enabled) continue;
 
-    // 반복 유형 체크
+    // ── 예방접종: D-7, D-1, D-day 오전 9시 알림 ──────────────────────────────
+    if (s.type === "vaccine") {
+      if (!s.vaccineDate || hhmm !== "09:00") continue;
+      const fireKey = `${id}_${todayStr}`;
+      if (firedThisMinute.get(id) === fireKey) continue;
+
+      const target = new Date(s.vaccineDate);
+      target.setHours(0, 0, 0, 0);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const diff = Math.round((target - today) / 86400000);
+
+      if (diff === 7 || diff === 1 || diff === 0) {
+        firedThisMinute.set(id, fireKey);
+        const label = diff === 0 ? "오늘이에요!" : `D-${diff}이에요!`;
+        sendPushToAll({
+          title: `💉 예방접종 알림`,
+          body: s.dogName ? `${s.dogName}의 ${s.title} ${label}` : `${s.title} ${label}`,
+        });
+        console.log(`🔔 예방접종 알림: ${s.title} D-${diff}`);
+      }
+      continue;
+    }
+
+    // ── 일반 스케줄 ────────────────────────────────────────────────────────────
+    if (s.time !== hhmm) continue;
+    if (firedThisMinute.get(id) === hhmm) continue;
+
     const created = new Date(s.createdAt);
     let shouldFire = false;
     if (s.repeat === "daily") shouldFire = true;
