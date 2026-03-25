@@ -16,7 +16,8 @@ app.use(express.json({ limit: "10mb" }));
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
 
 // ── 사용자 저장소 (JSON 파일) ────────────────────────────────────────────────
-const DATA_DIR = path.join(__dirname, "data");
+// Railway 볼륨: /app/data, 로컬 개발: ./data
+const DATA_DIR = existsSync("/app/data") ? "/app/data" : path.join(__dirname, "data");
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
@@ -77,7 +78,24 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.get("/api/auth/me", authMiddleware, (req, res) => {
-  res.json({ user: { id: req.user.id, name: req.user.name } });
+  const users = loadUsers();
+  const user = users.find((u) => u.id === req.user.id);
+  if (!user) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
+  const { hash, ...safe } = user;
+  res.json({ user: safe });
+});
+
+app.patch("/api/auth/profile", authMiddleware, (req, res) => {
+  const { gender, phone, memo } = req.body;
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.id === req.user.id);
+  if (idx === -1) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
+  if (gender !== undefined) users[idx].gender = gender;
+  if (phone !== undefined) users[idx].phone = phone;
+  if (memo !== undefined) users[idx].memo = memo;
+  saveUsers(users);
+  const { hash, ...safe } = users[idx];
+  res.json({ user: safe });
 });
 
 const anthropic = new Anthropic({

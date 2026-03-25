@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check } from "lucide-react";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
+import { useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { AddDogDialog } from "@/components/add-dog-dialog";
 import { EditDogDialog } from "@/components/edit-dog-dialog";
@@ -10,6 +11,8 @@ import { useDailyLog } from "@/hooks/use-daily-log";
 import { useSchedules, useAddSchedule, syncSchedulesToServer } from "@/hooks/use-schedules";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
@@ -132,14 +135,102 @@ function DailyReminderBanner() {
   );
 }
 
+function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { user, updateProfile } = useAuth();
+  const [gender, setGender] = useState(user?.gender || "");
+  const [phone, setPhone] = useState(user?.phone || "");
+  const [memo, setMemo] = useState(user?.memo || "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await updateProfile({ gender: gender || undefined, phone: phone || undefined, memo: memo || undefined });
+      setSaved(true);
+      setTimeout(() => { setSaved(false); onOpenChange(false); }, 1000);
+    } catch { }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="rounded-3xl max-w-sm mx-4 p-6">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">보호자 정보</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-2">나중에 병원 방문 시 반려견 정보와 함께 전달할 수 있어요</p>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <p className="text-sm font-semibold text-muted-foreground mb-2">이름</p>
+            <p className="text-sm font-bold text-foreground bg-secondary/50 px-4 py-3 rounded-xl">{user?.name}</p>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-muted-foreground mb-2">성별</p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setGender("male")}
+                className={cn("flex-1 h-11 rounded-xl font-bold text-sm transition-all border-2",
+                  gender === "male" ? "bg-blue-50 border-blue-500 text-blue-700" : "bg-card border-border/50 text-muted-foreground")}>
+                남성
+              </button>
+              <button type="button" onClick={() => setGender("female")}
+                className={cn("flex-1 h-11 rounded-xl font-bold text-sm transition-all border-2",
+                  gender === "female" ? "bg-pink-50 border-pink-500 text-pink-700" : "bg-card border-border/50 text-muted-foreground")}>
+                여성
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-muted-foreground mb-2">연락처 <span className="font-normal">(선택)</span></p>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="010-0000-0000"
+              className="w-full h-11 px-4 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-muted-foreground mb-2">메모 <span className="font-normal">(선택)</span></p>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="알레르기, 특이사항 등"
+              rows={2}
+              className="w-full px-4 py-3 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:border-primary resize-none"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full h-11 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+        >
+          {saved ? <><Check className="w-4 h-4" /> 저장 완료</> : saving ? "저장 중..." : "저장하기"}
+        </button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Home() {
   const { data: dogs, isLoading } = useDogs();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [editingDog, setEditingDog] = useState<Dog | null>(null);
   const [dailyCheckOpen, setDailyCheckOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const profileEmoji = user?.gender === "male" ? "👨🏻" : user?.gender === "female" ? "👩🏻" : "🧑🏻";
 
   return (
     <Layout>
+      <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
       <EditDogDialog
         dog={editingDog}
         open={!!editingDog}
@@ -161,9 +252,9 @@ export default function Home() {
             </h1>
             <p className="text-muted-foreground font-medium mt-1">반려견 건강 관리 파트너</p>
           </div>
-          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shadow-inner cursor-pointer hover:bg-secondary/80 transition-colors">
-            <span className="text-xl">👩🏻</span>
-          </div>
+          <button onClick={() => setProfileOpen(true)} className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shadow-inner hover:bg-secondary/80 transition-colors">
+            <span className="text-xl">{profileEmoji}</span>
+          </button>
         </header>
 
         {isLoading ? (
@@ -260,7 +351,11 @@ export default function Home() {
                       </div>
                       <div className="bg-secondary/50 rounded-2xl p-3">
                         <p className="text-[11px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">몸무게</p>
-                        <p className="font-bold text-foreground text-lg">{dog.weight}<span className="text-sm font-medium text-muted-foreground ml-0.5">kg</span></p>
+                        {dog.weight ? (
+                          <p className="font-bold text-foreground text-lg">{dog.weight}<span className="text-sm font-medium text-muted-foreground ml-0.5">kg</span></p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground font-medium">미입력</p>
+                        )}
                       </div>
                     </div>
                     <TodayConditionBadge dogId={dog.id} />

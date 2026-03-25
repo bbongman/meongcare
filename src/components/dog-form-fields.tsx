@@ -111,6 +111,12 @@ export function DogFormFields({ form, photoPreview, onPhotoChange }: DogFormFiel
           </FormItem>
         )} />
 
+        <div className="col-span-2 bg-blue-50/80 border border-blue-100 rounded-xl px-3 py-2.5">
+          <p className="text-[11px] text-blue-700 leading-relaxed">
+            견종, 나이, 몸무게를 정확히 입력할수록 AI 문진에서 더 정확한 결과를 받을 수 있어요. 모르는 항목은 나중에 수정할 수 있어요.
+          </p>
+        </div>
+
         <FormField control={form.control} name="gender" render={({ field }) => (
           <FormItem className="col-span-2">
             <FormLabel className="font-semibold text-foreground/80">성별</FormLabel>

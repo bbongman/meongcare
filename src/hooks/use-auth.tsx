@@ -3,6 +3,10 @@ import { useState, useEffect, useCallback, useContext, createContext, type React
 export interface AuthUser {
   id: string;
   name: string;
+  gender?: "male" | "female";
+  phone?: string;
+  memo?: string;
+  createdAt?: string;
 }
 
 const TOKEN_KEY = "meongcare_token";
@@ -21,6 +25,7 @@ interface AuthContextValue {
   login: (name: string, password: string) => Promise<AuthUser>;
   register: (name: string, password: string) => Promise<AuthUser>;
   logout: () => void;
+  updateProfile: (data: { gender?: string; phone?: string; memo?: string }) => Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -80,8 +85,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const updateProfile = useCallback(async (data: { gender?: string; phone?: string; memo?: string }) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const res = await fetch("/api/auth/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error);
+    setUser(result.user);
+    localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+    return result.user as AuthUser;
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );
