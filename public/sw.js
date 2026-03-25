@@ -1,30 +1,45 @@
-const CACHE_NAME = "meongcare-v2";
+const CACHE_NAME = "meongcare-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
+  // 구 캐시 전부 삭제
   e.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.map((k) => caches.delete(k)))
     ).then(() => clients.claim())
   );
 });
 
-// 네트워크 우선, 실패 시 캐시 fallback (iOS PWA 필수)
+// 아이콘/폰트 등 정적 리소스만 캐시, HTML/JS/CSS는 항상 네트워크
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  // API 요청은 캐시하지 않음
-  if (request.url.includes("/api/")) return;
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response.ok && request.method === "GET") {
+  const url = new URL(request.url);
+
+  // API, HTML, JS, CSS → 항상 네트워크 (캐시 안 함)
+  if (
+    url.pathname.includes("/api/") ||
+    url.pathname.endsWith(".html") ||
+    url.pathname.endsWith(".js") ||
+    url.pathname.endsWith(".css") ||
+    url.pathname === "/"
+  ) return;
+
+  // 아이콘, 이미지, 폰트만 캐시
+  if (url.pathname.startsWith("/icons/") || url.pathname.endsWith(".png") || url.pathname.endsWith(".svg") || url.pathname.endsWith(".woff2")) {
+    event.respondWith(
+      caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+        if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return response;
-      })
-      .catch(() => caches.match(request))
-  );
+      }))
+    );
+    return;
+  }
+
+  // 나머지는 네트워크 우선
+  return;
 });
 
 self.addEventListener("push", (event) => {
