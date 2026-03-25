@@ -430,15 +430,18 @@ export default function Home() {
             {/* 최근 검진 기록 */}
             <RecentVetVisitWidget />
 
-            {/* 나이 기반 건강 팁 */}
-            {/* 건강 팁 슬라이드 */}
-            <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-6 px-6 snap-x snap-mandatory pb-1">
-              {dogs.map((dog) => (
-                <div key={dog.id} className="min-w-[85%] snap-center shrink-0">
-                  <HealthTipWidget dog={dog} />
-                </div>
-              ))}
-            </div>
+            {/* 건강 팁 */}
+            {dogs.length === 1 ? (
+              <HealthTipWidget dog={dogs[0]} />
+            ) : (
+              <div className="flex gap-4 overflow-x-auto hide-scrollbar -mx-6 px-6 snap-x snap-mandatory pb-1">
+                {dogs.map((dog) => (
+                  <div key={dog.id} className="min-w-[280px] w-[85%] snap-center shrink-0">
+                    <HealthTipWidget dog={dog} />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Quick Actions */}
             <div className="mt-2 space-y-4">
