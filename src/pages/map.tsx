@@ -56,6 +56,7 @@ export default function Map() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [locationDenied, setLocationDenied] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
   const [activeCategory, setActiveCategory] = useState("동물병원");
   const [openOnly, setOpenOnly] = useState(false);
@@ -104,12 +105,22 @@ export default function Map() {
   }, [activeCategory, radius, openOnly]);
 
   function getCurrentLocation(): Promise<{ lat: number; lng: number }> {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) { resolve({ lat: 37.5665, lng: 126.978 }); return; }
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("이 브라우저는 위치 서비스를 지원하지 않아요."));
+        return;
+      }
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => resolve({ lat: 37.5665, lng: 126.978 }),
-        { timeout: 8000 }
+        (err) => {
+          if (err.code === err.PERMISSION_DENIED) {
+            setLocationDenied(true);
+            reject(new Error("location_denied"));
+          } else {
+            reject(new Error("위치를 가져오지 못했어요. 잠시 후 다시 시도해주세요."));
+          }
+        },
+        { timeout: 10000, enableHighAccuracy: true }
       );
     });
   }
@@ -306,22 +317,41 @@ export default function Map() {
           )}
           {status === "error" && !isLoading && (
             <div className="absolute inset-0 bg-secondary/90 flex flex-col items-center justify-center gap-3 px-6 text-center">
-              <span className="text-3xl">⚠️</span>
-              <p className="text-sm font-medium text-foreground whitespace-pre-line">{errorMsg}</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => window.location.reload()}
-                  className="text-xs font-bold text-primary bg-primary/10 px-4 py-2 rounded-full hover:bg-primary/20 transition-colors"
-                >
-                  다시 시도
-                </button>
-                <button
-                  onClick={() => setShowDiag(v => !v)}
-                  className="text-xs font-bold text-muted-foreground bg-muted/50 px-4 py-2 rounded-full hover:bg-muted transition-colors"
-                >
-                  진단 정보
-                </button>
-              </div>
+              {locationDenied ? (
+                <>
+                  <span className="text-3xl">📍</span>
+                  <p className="text-sm font-bold text-foreground">위치 접근이 필요해요</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    브라우저 주소창 왼쪽의 자물쇠 아이콘을 누른 뒤<br />
+                    <span className="font-semibold text-foreground">위치 → 허용</span>으로 변경하고 새로고침 해주세요
+                  </p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="text-xs font-bold text-white bg-primary px-5 py-2 rounded-full hover:bg-primary/90 transition-colors"
+                  >
+                    새로고침
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-3xl">⚠️</span>
+                  <p className="text-sm font-medium text-foreground whitespace-pre-line">{errorMsg}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="text-xs font-bold text-primary bg-primary/10 px-4 py-2 rounded-full hover:bg-primary/20 transition-colors"
+                    >
+                      다시 시도
+                    </button>
+                    <button
+                      onClick={() => setShowDiag(v => !v)}
+                      className="text-xs font-bold text-muted-foreground bg-muted/50 px-4 py-2 rounded-full hover:bg-muted transition-colors"
+                    >
+                      진단 정보
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

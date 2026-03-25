@@ -7,6 +7,7 @@
     "dev": "concurrently \"node --env-file=.env.local server.mjs\" \"vite --config vite.config.ts\"",
     "dev:client": "vite --config vite.config.ts",
     "build": "vite build --config vite.config.ts",
+    "start": "node server.mjs",
     "serve": "vite preview --config vite.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

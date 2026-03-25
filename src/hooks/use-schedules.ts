@@ -46,10 +46,7 @@ export function syncSchedulesToServer() {
 export function useSchedules() {
   return useQuery({
     queryKey: ["schedules"],
-    queryFn: async () => {
-      await new Promise((r) => setTimeout(r, 150));
-      return getSchedulesFromStorage();
-    },
+    queryFn: () => getSchedulesFromStorage(),
   });
 }
 
@@ -100,23 +97,6 @@ export function useDeleteSchedule() {
       syncSchedulesToServer();
     },
   });
-}
-
-export async function requestNotificationPermission(): Promise<boolean> {
-  if (!("Notification" in window)) return false;
-  if (Notification.permission === "granted") return true;
-  if (Notification.permission === "denied") return false;
-  const perm = await Notification.requestPermission();
-  return perm === "granted";
-}
-
-export function sendTestNotification(title: string, body: string) {
-  if (Notification.permission === "granted") {
-    new Notification(title, {
-      body,
-      icon: "/favicon.ico",
-    });
-  }
 }
 
 export const SCHEDULE_LABELS: Record<ScheduleType, { label: string; emoji: string; color: string; bg: string }> = {

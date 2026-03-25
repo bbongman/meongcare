@@ -31,23 +31,23 @@ const TYPES: { type: ScheduleType; label: string; emoji: string }[] = [
   { type: "vaccine", label: "예방접종", emoji: "💉" },
 ];
 
-function getDDayText(vaccineDate: string): string {
+function getDiffDays(vaccineDate: string): number {
   const target = new Date(vaccineDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   target.setHours(0, 0, 0, 0);
-  const diff = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function getDDayText(vaccineDate: string): string {
+  const diff = getDiffDays(vaccineDate);
   if (diff === 0) return "D-Day";
   if (diff > 0) return `D-${diff}`;
   return `D+${Math.abs(diff)}`;
 }
 
 function getDDayColor(vaccineDate: string): string {
-  const target = new Date(vaccineDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  target.setHours(0, 0, 0, 0);
-  const diff = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const diff = getDiffDays(vaccineDate);
   if (diff <= 1) return "bg-red-500 text-white";
   if (diff <= 7) return "bg-orange-400 text-white";
   return "bg-purple-100 text-purple-600";
@@ -72,6 +72,14 @@ export default function Schedule() {
   const [vaccineDate, setVaccineDate] = useState("");
   const [selectedDogId, setSelectedDogId] = useState<string>("");
   const [filterType, setFilterType] = useState<ScheduleType | "all">("all");
+
+  async function handleResubscribe() {
+    await unsubscribe();
+    await subscribe();
+    syncSchedulesToServer();
+    setTestMsg("재구독 완료! 테스트를 눌러보세요.");
+    setTimeout(() => setTestMsg(null), 3000);
+  }
 
   async function handleRequestNotif() {
     const ok = await subscribe();
@@ -171,7 +179,7 @@ export default function Schedule() {
               <Bell className="w-4 h-4 text-green-500 shrink-0" />
               <p className="text-sm font-medium text-green-700 flex-1">앱이 꺼져도 알림이 와요</p>
               <button
-                onClick={async () => { await unsubscribe(); await subscribe(); syncSchedulesToServer(); setTestMsg("재구독 완료! 테스트를 눌러보세요."); setTimeout(() => setTestMsg(null), 3000); }}
+                onClick={handleResubscribe}
                 className="text-xs font-semibold text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors shrink-0"
               >
                 재구독

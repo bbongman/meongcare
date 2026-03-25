@@ -14,14 +14,21 @@ const anthropic = new Anthropic({
 });
 
 // ── VAPID 설정 ──────────────────────────────────────────────────────────────
+// 배포 환경: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY 환경변수 사용
+// 로컬 개발: vapid.json 파일 자동 생성
 const VAPID_FILE = path.join(__dirname, "vapid.json");
 let vapidKeys;
-if (existsSync(VAPID_FILE)) {
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  vapidKeys = { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+} else if (existsSync(VAPID_FILE)) {
   vapidKeys = JSON.parse(readFileSync(VAPID_FILE, "utf8"));
 } else {
   vapidKeys = webpush.generateVAPIDKeys();
   writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
   console.log("✅ VAPID 키 생성 완료 →", VAPID_FILE);
+  console.log("🔑 배포 시 아래 값을 환경변수로 등록하세요:");
+  console.log("   VAPID_PUBLIC_KEY =", vapidKeys.publicKey);
+  console.log("   VAPID_PRIVATE_KEY =", vapidKeys.privateKey);
 }
 webpush.setVapidDetails(
   "mailto:admin@meongcare.app",
@@ -392,7 +399,16 @@ app.post("/api/analyze-product", async (req, res) => {
   }
 });
 
-const PORT = process.env.API_PORT ?? 3099;
+// ── 프론트엔드 정적 파일 서빙 (프로덕션) ────────────────────────────────────
+const distDir = path.join(__dirname, "dist/public");
+if (existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(distDir, "index.html"));
+  });
+}
+
+const PORT = process.env.PORT ?? process.env.API_PORT ?? 3099;
 app.listen(PORT, () => {
-  console.log(`API 서버 실행 중: http://localhost:${PORT}`);
+  console.log(`서버 실행 중: http://localhost:${PORT}`);
 });
