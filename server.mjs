@@ -41,6 +41,26 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// ── 관리자 계정 초기화 ───────────────────────────────────────────────────────
+const ADMIN_NAME = "관리자";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "meong1234";
+(async () => {
+  const users = loadUsers();
+  if (!users.find((u) => u.name === ADMIN_NAME)) {
+    const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    users.push({ id: crypto.randomUUID(), name: ADMIN_NAME, hash, role: "admin", createdAt: new Date().toISOString() });
+    saveUsers(users);
+    console.log(`👑 관리자 계정 생성: ${ADMIN_NAME} / ${ADMIN_PASSWORD}`);
+  }
+})();
+
+function adminOnly(req, res, next) {
+  const users = loadUsers();
+  const user = users.find((u) => u.id === req.user.id);
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "관리자만 접근할 수 있어요." });
+  next();
+}
+
 // ── 회원가입 / 로그인 API ────────────────────────────────────────────────────
 app.post("/api/auth/register", async (req, res) => {
   const { name, password } = req.body;
@@ -96,6 +116,36 @@ app.patch("/api/auth/profile", authMiddleware, (req, res) => {
   saveUsers(users);
   const { hash, ...safe } = users[idx];
   res.json({ user: safe });
+});
+
+// ── 관리자 API ───────────────────────────────────────────────────────────────
+app.get("/api/admin/users", authMiddleware, adminOnly, (req, res) => {
+  const users = loadUsers().map(({ hash, ...u }) => u);
+  res.json({ users });
+});
+
+app.patch("/api/admin/reset-password", authMiddleware, adminOnly, async (req, res) => {
+  const { targetName, newPassword } = req.body;
+  if (!targetName || !newPassword) return res.status(400).json({ error: "이름과 새 비밀번호를 입력해주세요." });
+  if (newPassword.length < 4) return res.status(400).json({ error: "비밀번호는 4자 이상이어야 해요." });
+
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.name === targetName);
+  if (idx === -1) return res.status(404).json({ error: "해당 사용자를 찾을 수 없어요." });
+
+  users[idx].hash = await bcrypt.hash(newPassword, 10);
+  saveUsers(users);
+  console.log(`🔑 비밀번호 초기화: ${targetName}`);
+  res.json({ ok: true, message: `${targetName}의 비밀번호가 변경됐어요.` });
+});
+
+app.delete("/api/admin/users/:id", authMiddleware, adminOnly, (req, res) => {
+  const users = loadUsers();
+  const target = users.find((u) => u.id === req.params.id);
+  if (!target) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
+  if (target.role === "admin") return res.status(403).json({ error: "관리자 계정은 삭제할 수 없어요." });
+  saveUsers(users.filter((u) => u.id !== req.params.id));
+  res.json({ ok: true });
 });
 
 const anthropic = new Anthropic({

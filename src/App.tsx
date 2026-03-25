@@ -15,6 +15,7 @@ import Health from "./pages/health";
 import AiTools from "./pages/ai-tools";
 import Schedule from "./pages/schedule";
 import Diary from "./pages/diary";
+import Admin from "./pages/admin";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/ai" component={AiTools} />
       <Route path="/schedule" component={Schedule} />
       <Route path="/diary" component={Diary} />
+      <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -72,14 +72,19 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="text-center mt-6">
+        <div className="text-center mt-6 space-y-2">
           {mode === "login" ? (
-            <p className="text-sm text-muted-foreground">
-              처음이신가요?{" "}
-              <button onClick={() => { setMode("register"); setError(""); }} className="text-primary font-semibold">
-                가입하기
-              </button>
-            </p>
+            <>
+              <p className="text-sm text-muted-foreground">
+                처음이신가요?{" "}
+                <button onClick={() => { setMode("register"); setError(""); }} className="text-primary font-semibold">
+                  가입하기
+                </button>
+              </p>
+              <p className="text-xs text-muted-foreground/60">
+                비밀번호를 잊으셨나요? 관리자에게 문의하세요
+              </p>
+            </>
           ) : (
             <p className="text-sm text-muted-foreground">
               이미 계정이 있나요?{" "}
