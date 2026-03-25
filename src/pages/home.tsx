@@ -431,7 +431,9 @@ export default function Home() {
             <RecentVetVisitWidget />
 
             {/* 나이 기반 건강 팁 */}
-            {dogs[0] && <HealthTipWidget dog={dogs[0]} />}
+            {dogs.map((dog) => (
+              <HealthTipWidget key={dog.id} dog={dog} />
+            ))}
 
             {/* Quick Actions */}
             <div className="mt-2 space-y-4">
