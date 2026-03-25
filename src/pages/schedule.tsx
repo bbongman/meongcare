@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Bell, BellOff, Trash2, Clock, RefreshCw } from "lucide-react";
+import { Plus, Bell, Trash2, Clock, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
@@ -14,13 +15,13 @@ import {
   useAddSchedule,
   useUpdateSchedule,
   useDeleteSchedule,
-  requestNotificationPermission,
-  sendTestNotification,
+  syncSchedulesToServer,
   SCHEDULE_LABELS,
   REPEAT_LABELS,
   type ScheduleType,
   type RepeatType,
 } from "@/hooks/use-schedules";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { useDogs } from "@/hooks/use-dogs";
 
 const TYPES: { type: ScheduleType; label: string; emoji: string }[] = [
@@ -59,8 +60,10 @@ export default function Schedule() {
   const updateSchedule = useUpdateSchedule();
   const deleteSchedule = useDeleteSchedule();
 
+  const { isSupported: pushSupported, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePushNotifications();
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+
   const [open, setOpen] = useState(false);
-  const [notifGranted, setNotifGranted] = useState(false);
   const [selectedType, setSelectedType] = useState<ScheduleType>("meal");
   const [title, setTitle] = useState("");
   const [time, setTime] = useState("08:00");
@@ -70,16 +73,31 @@ export default function Schedule() {
   const [selectedDogId, setSelectedDogId] = useState<string>("");
   const [filterType, setFilterType] = useState<ScheduleType | "all">("all");
 
-  useEffect(() => {
-    setNotifGranted(Notification.permission === "granted");
-  }, []);
-
   async function handleRequestNotif() {
-    const granted = await requestNotificationPermission();
-    setNotifGranted(granted);
-    if (granted) {
-      sendTestNotification("멍케어 알림 활성화 🐾", "이제 반려견 스케줄 알림을 받을 수 있어요!");
+    const ok = await subscribe();
+    if (ok) {
+      // 구독 직후 현재 스케줄 서버에 동기화
+      syncSchedulesToServer();
     }
+  }
+
+  async function handleTestNotif() {
+    setTestMsg(null);
+    try {
+      // 구독 안 되어 있으면 먼저 구독
+      if (!isSubscribed) {
+        const ok = await subscribe();
+        if (!ok) { setTestMsg("알림 허용이 필요해요."); setTimeout(() => setTestMsg(null), 4000); return; }
+        syncSchedulesToServer();
+      }
+      const res = await fetch("/api/push-test", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) setTestMsg(data.error);
+      else setTestMsg("테스트 알림을 보냈어요! 잠시 후 도착해요.");
+    } catch {
+      setTestMsg("전송 실패. 서버를 확인해주세요.");
+    }
+    setTimeout(() => setTestMsg(null), 4000);
   }
 
   function resetForm() {
@@ -147,33 +165,98 @@ export default function Schedule() {
         </header>
 
         {/* Push Notification Banner */}
-        {!notifGranted && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-4 flex items-center gap-3"
-          >
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
-              <Bell className="w-5 h-5 text-primary" />
+        {pushSupported ? (
+          isSubscribed ? (
+            <div className="bg-green-50 border border-green-100 rounded-2xl px-4 py-3 flex items-center gap-2">
+              <Bell className="w-4 h-4 text-green-500 shrink-0" />
+              <p className="text-sm font-medium text-green-700 flex-1">앱이 꺼져도 알림이 와요</p>
+              <button
+                onClick={async () => { await unsubscribe(); await subscribe(); syncSchedulesToServer(); setTestMsg("재구독 완료! 테스트를 눌러보세요."); setTimeout(() => setTestMsg(null), 3000); }}
+                className="text-xs font-semibold text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors shrink-0"
+              >
+                재구독
+              </button>
+              <button
+                onClick={handleTestNotif}
+                className="text-xs font-semibold text-green-600 bg-white border border-green-200 px-2.5 py-1 rounded-lg hover:bg-green-50 transition-colors shrink-0"
+              >
+                테스트
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-foreground">푸시 알림 허용하기</p>
-              <p className="text-xs text-muted-foreground mt-0.5">시간에 맞춰 알림을 받아요</p>
-            </div>
-            <Button
-              size="sm"
-              onClick={handleRequestNotif}
-              className="shrink-0 rounded-xl bg-primary text-white text-xs px-3 h-8"
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-4 flex items-center gap-3"
             >
-              허용
-            </Button>
-          </motion.div>
+              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                <Bell className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-foreground">푸시 알림 허용하기</p>
+                <p className="text-xs text-muted-foreground mt-0.5">앱이 꺼져도 시간에 맞춰 알림이 와요</p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  onClick={handleTestNotif}
+                  disabled={pushLoading}
+                  className="text-xs font-semibold text-orange-600 bg-white border border-orange-200 px-2.5 py-1 rounded-lg hover:bg-orange-50 transition-colors"
+                >
+                  테스트
+                </button>
+                <Button
+                  size="sm"
+                  onClick={handleRequestNotif}
+                  disabled={pushLoading}
+                  className="shrink-0 rounded-xl bg-primary text-white text-xs px-3 h-8"
+                >
+                  {pushLoading ? "..." : "허용"}
+                </Button>
+              </div>
+            </motion.div>
+          )
+        ) : (
+          <div className="bg-secondary border border-border/50 rounded-2xl px-4 py-3 flex items-center gap-2">
+            <Bell className="w-4 h-4 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">이 브라우저는 푸시 알림을 지원하지 않아요</p>
+          </div>
+        )}
+        {testMsg && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 text-xs text-blue-700 font-medium">
+            {testMsg}
+          </div>
         )}
 
-        {notifGranted && (
-          <div className="bg-green-50 border border-green-100 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <Bell className="w-4 h-4 text-green-500" />
-            <p className="text-sm font-medium text-green-700">브라우저 알림이 활성화되었어요</p>
+        {/* 예방접종 전체 현황 */}
+        {schedules.some((s) => s.type === "vaccine") && (
+          <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-bold text-purple-700 uppercase tracking-wide">💉 예방접종 현황</p>
+              <button
+                onClick={() => { setFilterType("vaccine"); }}
+                className="text-xs text-purple-600 font-semibold hover:underline"
+              >
+                전체 보기
+              </button>
+            </div>
+            <div className="space-y-2">
+              {schedules.filter((s) => s.type === "vaccine" && s.vaccineDate).slice(0, 3).map((s) => (
+                <div key={s.id} className="flex items-center justify-between bg-white/70 rounded-xl px-3 py-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{s.title}</p>
+                    {s.dogName && <p className="text-xs text-muted-foreground">{s.dogName}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-muted-foreground">{s.vaccineDate}</p>
+                    {s.vaccineDate && (
+                      <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", getDDayColor(s.vaccineDate))}>
+                        {getDDayText(s.vaccineDate)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -399,12 +482,7 @@ export default function Schedule() {
             ) : (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-muted-foreground">알림 시간</Label>
-                <Input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="rounded-xl h-11"
-                />
+                <TimePicker value={time} onChange={setTime} />
               </div>
             )}
 

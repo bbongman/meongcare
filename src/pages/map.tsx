@@ -60,6 +60,7 @@ export default function Map() {
   const [activeCategory, setActiveCategory] = useState("동물병원");
   const [openOnly, setOpenOnly] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [radius, setRadius] = useState(3000);
 
   const apiKey = import.meta.env.VITE_KAKAO_MAP_KEY as string | undefined;
   const currentDomain = window.location.origin;
@@ -100,7 +101,7 @@ export default function Map() {
     setIsSearching(true);
     setSelectedId(null);
     doSearch(lat, lng, activeCategory).finally(() => setIsSearching(false));
-  }, [activeCategory]);
+  }, [activeCategory, radius, openOnly]);
 
   function getCurrentLocation(): Promise<{ lat: number; lng: number }> {
     return new Promise((resolve) => {
@@ -145,8 +146,9 @@ export default function Map() {
         },
         {
           location: new maps.LatLng(lat, lng),
-          radius: 3000,
+          radius,
           sort: maps.services.SortBy.DISTANCE,
+          ...(openOnly ? { open_now: true } : {}),
         }
       );
     });
@@ -191,7 +193,7 @@ export default function Map() {
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-xl font-bold text-foreground">주변 장소 찾기</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">반경 3km 이내를 검색해요</p>
+              <p className="text-sm text-muted-foreground mt-0.5">반경 {radius / 1000}km 이내를 검색해요</p>
             </div>
             <button
               onClick={() => setShowDiag(v => !v)}
@@ -221,25 +223,43 @@ export default function Map() {
             ))}
           </div>
 
-          {/* Open Only Toggle */}
-          <div className="flex items-center justify-end gap-2 mt-2.5">
-            <span className="text-xs text-muted-foreground font-medium">영업중만 보기</span>
-            <button
-              onClick={() => setOpenOnly(v => !v)}
-              style={{ width: 40, height: 22 }}
-              className={cn(
-                "relative rounded-full transition-colors duration-200 shrink-0",
-                openOnly ? "bg-primary" : "bg-muted"
-              )}
-            >
-              <span
-                style={{ width: 18, height: 18 }}
+          {/* Radius + Open Only Toggle */}
+          <div className="flex items-center justify-between mt-2.5">
+            <div className="flex gap-1">
+              {[1000, 3000, 5000].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRadius(r)}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-bold border transition-all",
+                    radius === r
+                      ? "bg-primary text-white border-primary"
+                      : "bg-card text-muted-foreground border-border/50 hover:border-primary/30"
+                  )}
+                >
+                  {r / 1000}km
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium">영업중만 보기</span>
+              <button
+                onClick={() => setOpenOnly(v => !v)}
+                style={{ width: 40, height: 22 }}
                 className={cn(
-                  "absolute top-0.5 rounded-full bg-white shadow transition-transform duration-200",
-                  openOnly ? "translate-x-[19px]" : "translate-x-0.5"
+                  "relative rounded-full transition-colors duration-200 shrink-0",
+                  openOnly ? "bg-primary" : "bg-muted"
                 )}
-              />
-            </button>
+              >
+                <span
+                  style={{ width: 18, height: 18 }}
+                  className={cn(
+                    "absolute top-0.5 rounded-full bg-white shadow transition-transform duration-200",
+                    openOnly ? "translate-x-[19px]" : "translate-x-0.5"
+                  )}
+                />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -308,8 +328,8 @@ export default function Map() {
 
         {/* Open Only Note */}
         {openOnly && (status === "ready") && (
-          <div className="mx-4 mt-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-700 shrink-0">
-            ℹ️ 카카오 API 특성상 영업 여부는 실시간 반영이 어려울 수 있어요.
+          <div className="mx-4 mt-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-xl text-[11px] text-green-700 shrink-0">
+            ✅ 현재 영업 중인 장소만 표시하고 있어요.
           </div>
         )}
 

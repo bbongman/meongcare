@@ -34,6 +34,15 @@ const saveSchedulesToStorage = (schedules: Schedule[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(schedules));
 };
 
+export function syncSchedulesToServer() {
+  const schedules = getSchedulesFromStorage();
+  fetch("/api/schedules/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schedules }),
+  }).catch(() => {});
+}
+
 export function useSchedules() {
   return useQuery({
     queryKey: ["schedules"],
@@ -57,7 +66,10 @@ export function useAddSchedule() {
       saveSchedulesToStorage([newSchedule, ...current]);
       return newSchedule;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      syncSchedulesToServer();
+    },
   });
 }
 
@@ -69,7 +81,10 @@ export function useUpdateSchedule() {
       const updated = schedules.map((s) => (s.id === id ? { ...s, ...updates } : s));
       saveSchedulesToStorage(updated);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      syncSchedulesToServer();
+    },
   });
 }
 
@@ -80,7 +95,10 @@ export function useDeleteSchedule() {
       const schedules = getSchedulesFromStorage();
       saveSchedulesToStorage(schedules.filter((s) => s.id !== id));
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      syncSchedulesToServer();
+    },
   });
 }
 

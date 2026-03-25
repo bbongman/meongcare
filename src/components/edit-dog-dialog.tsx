@@ -21,8 +21,6 @@ interface EditDogDialogProps {
 
 export function EditDogDialog({ dog, open, onOpenChange }: EditDogDialogProps) {
   const [photoPreview, setPhotoPreview] = useState<string | null>(dog?.photo ?? null);
-
-  if (!dog) return null;
   const { toast } = useToast();
   const updateDog = useUpdateDog();
   const deleteDog = useDeleteDog();
@@ -30,15 +28,17 @@ export function EditDogDialog({ dog, open, onOpenChange }: EditDogDialogProps) {
   const form = useForm<DogInput>({
     resolver: zodResolver(dogSchema),
     defaultValues: {
-      name: dog.name,
-      breed: dog.breed,
-      age: dog.age,
-      gender: dog.gender,
-      weight: dog.weight,
-      neutered: dog.neutered,
-      photo: dog.photo ?? null,
+      name: dog?.name ?? "",
+      breed: dog?.breed ?? "",
+      age: dog?.age ?? (0 as any),
+      gender: dog?.gender ?? "male",
+      weight: dog?.weight ?? (0 as any),
+      neutered: dog?.neutered ?? false,
+      photo: dog?.photo ?? null,
     },
   });
+
+  if (!dog) return null;
 
   const onSubmit = (data: DogInput) => {
     updateDog.mutate({ id: dog.id, data }, {

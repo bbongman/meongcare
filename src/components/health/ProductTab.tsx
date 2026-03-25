@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useDogs } from "@/hooks/use-dogs";
 import { useHealthHistory } from "@/hooks/use-health-history";
 import { DogSelector } from "@/components/health/DogSelector";
-import { Loader2, Upload, Camera } from "lucide-react";
+import { Loader2, Upload, Camera, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -27,6 +27,7 @@ export function ProductTab() {
   const { data: dogs } = useDogs();
   const { addItem } = useHealthHistory();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [selectedDogId, setSelectedDogId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -53,6 +54,7 @@ export function ProductTab() {
     setResult(null);
     setError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   }
 
   async function handleAnalyze() {
@@ -91,24 +93,31 @@ export function ProductTab() {
       )}
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
 
       {!previewUrl ? (
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full h-44 rounded-2xl border-2 border-dashed border-border/60 bg-secondary/30 flex flex-col items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all"
-        >
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <Camera className="w-6 h-6 text-primary" />
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-bold text-foreground">제품 사진 업로드</p>
-            <p className="text-xs text-muted-foreground mt-0.5">사료, 간식, 용품 등 촬영 또는 선택</p>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-primary font-semibold">
-            <Upload className="w-3.5 h-3.5" />
-            사진 선택하기
-          </div>
-        </button>
+        <div className="space-y-3">
+          <button
+            onClick={() => cameraInputRef.current?.click()}
+            className="w-full h-36 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 flex flex-col items-center justify-center gap-2 hover:bg-primary/10 transition-all active:scale-[0.98]"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-primary/15 flex items-center justify-center">
+              <Camera className="w-6 h-6 text-primary" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-bold text-primary">지금 바로 촬영</p>
+              <p className="text-xs text-primary/70 mt-0.5">카메라로 제품을 찍어요</p>
+            </div>
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full py-3.5 rounded-2xl border border-border/60 bg-card flex items-center justify-center gap-2 hover:bg-secondary transition-colors"
+          >
+            <Upload className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-muted-foreground">갤러리에서 선택</span>
+          </button>
+          <p className="text-[11px] text-center text-muted-foreground">사료, 간식, 영양제, 용품 모두 분석 가능해요</p>
+        </div>
       ) : (
         <div className="relative">
           <img src={previewUrl} alt="제품" className="w-full h-52 object-contain rounded-2xl border border-border/50 bg-secondary/20" />
@@ -186,12 +195,24 @@ export function ProductTab() {
               </div>
             )}
 
-            <button
-              onClick={handleReset}
-              className="w-full py-3 rounded-2xl border border-border/60 text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors"
-            >
-              다른 제품 분석
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleReset}
+                className="flex-1 py-3 rounded-2xl border border-border/60 text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                다른 제품 분석
+              </button>
+              <button
+                onClick={() => {
+                  const text = `[멍케어 제품 분석]\n제품: ${result.productName}\n평가: ${result.rating} — ${result.ratingReason}\n\n${result.description}`;
+                  if (navigator.share) { navigator.share({ text }); }
+                  else { navigator.clipboard.writeText(text); alert("클립보드에 복사됐어요!"); }
+                }}
+                className="px-4 py-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -8,12 +8,12 @@ import { motion, AnimatePresence } from "framer-motion";
 type Tab = "translator" | "product";
 
 const TABS: { id: Tab; label: string; emoji: string; desc: string }[] = [
-  { id: "translator", label: "강아지 번역기", emoji: "🐾", desc: "짖음을 말로 번역" },
   { id: "product", label: "제품 분석", emoji: "🔍", desc: "용품 사진으로 성분 확인" },
+  { id: "translator", label: "강아지 번역기", emoji: "🐾", desc: "짖음을 말로 번역" },
 ];
 
 export default function AiTools() {
-  const [activeTab, setActiveTab] = useState<Tab>("translator");
+  const [activeTab, setActiveTab] = useState<Tab>("product");
 
   return (
     <Layout>
@@ -30,23 +30,19 @@ export default function AiTools() {
         </div>
 
         {/* 탭 */}
-        <div className="grid grid-cols-2 gap-2 mb-5">
+        <div className="flex gap-1.5 mb-5 overflow-x-auto pb-1">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex flex-col items-center gap-1.5 py-4 rounded-2xl border font-semibold transition-all",
+                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border",
                 activeTab === tab.id
-                  ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                  : "bg-card text-foreground border-border/50 hover:border-primary/30"
+                  ? "bg-primary text-white border-primary shadow-sm"
+                  : "bg-card text-muted-foreground border-border/50 hover:border-primary/30"
               )}
             >
-              <span className="text-2xl">{tab.emoji}</span>
-              <span className="text-sm">{tab.label}</span>
-              <span className={cn("text-[11px]", activeTab === tab.id ? "text-white/70" : "text-muted-foreground")}>
-                {tab.desc}
-              </span>
+              <span>{tab.emoji}</span>{tab.label}
             </button>
           ))}
         </div>

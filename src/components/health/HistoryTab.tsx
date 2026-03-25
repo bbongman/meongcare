@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useHealthHistory, HistoryItem, ConsultationResult, TranslationResult, ProductResult } from "@/hooks/use-health-history";
-import { Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -17,9 +17,25 @@ const URGENCY_EMOJI: Record<string, string> = {
   now: "🚨",
 };
 
+function buildShareText(item: HistoryItem): string {
+  const date = format(new Date(item.date), "M월 d일 HH:mm", { locale: ko });
+  if (item.type === "consultation") {
+    const r = item.result as ConsultationResult;
+    const urgencyLabel = { home: "집에서 케어", tomorrow: "내일 병원 방문", now: "즉시 응급실" }[r.urgency];
+    return `[멍케어 AI 문진] ${date}\n강아지: ${item.dogName}\n증상: ${item.input}\n\n응급도: ${urgencyLabel}\n요약: ${r.summary}\n케어: ${r.advice}`;
+  }
+  if (item.type === "translation") {
+    const r = item.result as TranslationResult;
+    return `[멍케어 번역기] ${date}\n강아지: ${item.dogName}\n기분: ${r.moodEmoji} ${r.mood}\n\n"${r.translation}"`;
+  }
+  const r = item.result as ProductResult;
+  return `[멍케어 제품분석] ${date}\n강아지: ${item.dogName}\n제품: ${r.productName}\n평가: ${r.rating} — ${r.ratingReason}`;
+}
+
 function HistoryCard({ item, onRemove }: { item: HistoryItem; onRemove: () => void }) {
   const cfg = TYPE_CONFIG[item.type];
   const [expanded, setExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
@@ -33,9 +49,35 @@ function HistoryCard({ item, onRemove }: { item: HistoryItem; onRemove: () => vo
             <span className="text-xs text-muted-foreground font-medium">{item.dogName}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={onRemove} className="text-muted-foreground/40 hover:text-red-400 transition-colors p-1">
-              <Trash2 className="w-3.5 h-3.5" />
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(buildShareText(item));
+                alert("클립보드에 복사됐어요!");
+              }}
+              className="text-muted-foreground/40 hover:text-primary transition-colors p-1"
+            >
+              <Copy className="w-3.5 h-3.5" />
             </button>
+            {confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={onRemove}
+                  className="text-[11px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md"
+                >
+                  삭제
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="text-[11px] font-semibold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-md"
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)} className="text-muted-foreground/40 hover:text-red-400 transition-colors p-1">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -171,6 +213,7 @@ const FILTERS: { id: FilterType; label: string; emoji: string }[] = [
 export function HistoryTab() {
   const { history, removeItem, clearAll } = useHealthHistory();
   const [filter, setFilter] = useState<FilterType>("all");
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const filtered = filter === "all" ? history : history.filter((i) => i.type === filter);
 
@@ -202,12 +245,30 @@ export function HistoryTab() {
             <span>{f.emoji}</span>{f.label}
           </button>
         ))}
-        <button
-          onClick={() => { if (confirm("전체 기록을 삭제할까요?")) clearAll(); }}
-          className="ml-auto text-xs text-red-400 hover:text-red-500 font-semibold transition-colors shrink-0 px-2"
-        >
-          전체 삭제
-        </button>
+        {confirmClear ? (
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <span className="text-[11px] text-muted-foreground">정말 삭제할까요?</span>
+            <button
+              onClick={() => { clearAll(); setConfirmClear(false); }}
+              className="text-xs text-red-500 font-bold px-2 py-0.5 bg-red-50 rounded-full border border-red-200"
+            >
+              삭제
+            </button>
+            <button
+              onClick={() => setConfirmClear(false)}
+              className="text-xs text-muted-foreground font-semibold px-2 py-0.5 bg-secondary rounded-full"
+            >
+              취소
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmClear(true)}
+            className="ml-auto text-xs text-red-400 hover:text-red-500 font-semibold transition-colors shrink-0 px-2"
+          >
+            전체 삭제
+          </button>
+        )}
       </div>
 
       <p className="text-xs text-muted-foreground">{filtered.length}개</p>

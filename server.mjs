@@ -1,6 +1,11 @@
 import express from "express";
 import Anthropic from "@anthropic-ai/sdk";
+import webpush from "web-push";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { fileURLToPath } from "url";
+import path from "path";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
@@ -8,7 +13,131 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// ── VAPID 설정 ──────────────────────────────────────────────────────────────
+const VAPID_FILE = path.join(__dirname, "vapid.json");
+let vapidKeys;
+if (existsSync(VAPID_FILE)) {
+  vapidKeys = JSON.parse(readFileSync(VAPID_FILE, "utf8"));
+} else {
+  vapidKeys = webpush.generateVAPIDKeys();
+  writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
+  console.log("✅ VAPID 키 생성 완료 →", VAPID_FILE);
+}
+webpush.setVapidDetails(
+  "mailto:admin@meongcare.app",
+  vapidKeys.publicKey,
+  vapidKeys.privateKey
+);
 
+// ── 인메모리 저장소 ──────────────────────────────────────────────────────────
+const subscriptions = new Map(); // clientId → PushSubscription
+const serverSchedules = new Map(); // id → Schedule
+const firedThisMinute = new Map(); // scheduleId → "HH:mm"
+const firedOnce = new Set(); // scheduleId (repeat=none 전송 완료)
+
+// ── 푸시 알림 API ─────────────────────────────────────────────────────────────
+app.get("/api/vapid-public-key", (req, res) => {
+  res.json({ publicKey: vapidKeys.publicKey });
+});
+
+app.post("/api/push-subscribe", (req, res) => {
+  const { subscription, clientId } = req.body;
+  if (!subscription || !clientId) return res.status(400).json({ error: "missing fields" });
+  subscriptions.set(clientId, subscription);
+  console.log(`📱 푸시 구독 등록: ${clientId} (총 ${subscriptions.size}개)`);
+  res.json({ ok: true });
+});
+
+app.delete("/api/push-unsubscribe", (req, res) => {
+  const { clientId } = req.body;
+  subscriptions.delete(clientId);
+  res.json({ ok: true });
+});
+
+// ── 스케줄 동기화 ─────────────────────────────────────────────────────────────
+app.post("/api/schedules/sync", (req, res) => {
+  const { schedules } = req.body;
+  if (!Array.isArray(schedules)) return res.status(400).json({ error: "schedules must be array" });
+  serverSchedules.clear();
+  schedules.forEach((s) => serverSchedules.set(s.id, s));
+  console.log(`🗓️ 스케줄 동기화: ${schedules.length}개`);
+  res.json({ ok: true });
+});
+
+// ── 테스트 알림 ───────────────────────────────────────────────────────────────
+app.post("/api/push-test", async (req, res) => {
+  if (subscriptions.size === 0) {
+    return res.status(400).json({ error: "등록된 구독자가 없어요. 알림 허용 버튼을 먼저 눌러주세요." });
+  }
+  const payload = JSON.stringify({
+    title: "🐾 멍케어 테스트 알림",
+    body: "푸시 알림이 정상 작동하고 있어요!",
+  });
+  const results = await Promise.allSettled(
+    [...subscriptions.entries()].map(([clientId, sub]) =>
+      webpush.sendNotification(sub, payload).catch((err) => {
+        if (err.statusCode === 410 || err.statusCode === 404) subscriptions.delete(clientId);
+        throw err;
+      })
+    )
+  );
+  const succeeded = results.filter((r) => r.status === "fulfilled").length;
+  console.log(`🔔 테스트 알림: ${succeeded}/${results.length} 성공`);
+  res.json({ ok: true, sent: succeeded, total: results.length });
+});
+
+// ── 스케줄 알림 발송 ──────────────────────────────────────────────────────────
+function sendPushToAll(payload) {
+  const text = JSON.stringify(payload);
+  for (const [clientId, sub] of subscriptions) {
+    webpush.sendNotification(sub, text).catch((err) => {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        subscriptions.delete(clientId);
+      }
+    });
+  }
+}
+
+function checkSchedules() {
+  if (subscriptions.size === 0) return;
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+  for (const [id, s] of serverSchedules) {
+    if (!s.enabled || s.type === "vaccine") continue;
+    if (s.time !== hhmm) continue;
+    if (firedThisMinute.get(id) === hhmm) continue; // 이미 이 분에 발송
+
+    // 반복 유형 체크
+    const created = new Date(s.createdAt);
+    let shouldFire = false;
+    if (s.repeat === "daily") shouldFire = true;
+    else if (s.repeat === "weekly") shouldFire = now.getDay() === created.getDay();
+    else if (s.repeat === "monthly") shouldFire = now.getDate() === created.getDate();
+    else if (s.repeat === "none") {
+      if (!firedOnce.has(id)) { shouldFire = true; firedOnce.add(id); }
+    }
+
+    if (!shouldFire) continue;
+
+    firedThisMinute.set(id, hhmm);
+    sendPushToAll({
+      title: `🐾 ${s.title}`,
+      body: s.dogName ? `${s.dogName}의 ${s.title} 시간이에요!` : `${s.title} 시간이에요!`,
+    });
+    console.log(`🔔 알림 발송: ${s.title} @ ${hhmm}`);
+  }
+}
+
+// 다음 정각(분)에 맞춰 시작 후 1분마다 반복
+const now = new Date();
+const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+setTimeout(() => {
+  checkSchedules();
+  setInterval(checkSchedules, 60_000);
+}, msUntilNextMinute);
+
+// ── AI 분석 API ────────────────────────────────────────────────────────────────
 app.post("/api/analyze", async (req, res) => {
   const { dog, symptoms } = req.body;
 
@@ -100,10 +229,8 @@ async function callHfAudio(audioBuffer, mimeType) {
         await new Promise((r) => setTimeout(r, 3000));
         continue;
       }
-      // 그 외 에러 → null (폴백)
       return null;
     } catch {
-      // JSON 파싱 실패 등 네트워크 오류 → 재시도
       if (attempt < 3) await new Promise((r) => setTimeout(r, 2000));
     }
   }
@@ -117,16 +244,13 @@ app.post("/api/classify-audio", async (req, res) => {
   const dogInfo = dog ? `이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살` : "강아지 정보 없음";
 
   try {
-    // 1. HF 오디오 분류 (실패 시 null)
     const audioBuffer = Buffer.from(audioBase64, "base64");
     const hfData = await callHfAudio(audioBuffer, mimeType);
 
-    // 상위 5개 레이블 추출 (HF 실패 시 폴백 레이블)
     const topLabels = Array.isArray(hfData)
       ? hfData.slice(0, 5).map((r) => `${r.label} (${(r.score * 100).toFixed(0)}%)`).join(", ")
       : "알 수 없음 (오디오 분석 불가, 상황과 견종 기반으로 추측)";
 
-    // 2. Claude 번역
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 400,
@@ -161,7 +285,6 @@ app.post("/api/classify-audio", async (req, res) => {
   }
 });
 
-// 강아지 번역기 (수동 선택 방식 — 백업용)
 app.post("/api/translate", async (req, res) => {
   const { dog, barkType, context } = req.body;
   if (!barkType || !context) return res.status(400).json({ error: "짖음 유형과 상황을 선택해주세요." });
@@ -198,7 +321,6 @@ app.post("/api/translate", async (req, res) => {
   }
 });
 
-// 제품 분석
 app.post("/api/analyze-product", async (req, res) => {
   const { dog, imageBase64, mediaType } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "이미지를 업로드해주세요." });

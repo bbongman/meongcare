@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useDogs } from "@/hooks/use-dogs";
 import { useHealthHistory } from "@/hooks/use-health-history";
+import { useDailyLog } from "@/hooks/use-daily-log";
 import { DogSelector } from "@/components/health/DogSelector";
-import { Loader2, Sparkles, AlertTriangle, CheckCircle, Clock, ChevronRight, MapPin, RotateCcw } from "lucide-react";
+import { Loader2, Sparkles, AlertTriangle, CheckCircle, Clock, ChevronRight, MapPin, RotateCcw, BookmarkCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -51,6 +52,42 @@ const SYMPTOM_EXAMPLES = [
   "숨을 가쁘게 쉬어요",
 ];
 
+function SaveToLogButton({ dogId, summary }: { dogId: string; summary: string }) {
+  const { todayLog, saveLog } = useDailyLog(dogId);
+  const [saved, setSaved] = useState(false);
+
+  function handleSave() {
+    const prevMemo = todayLog?.memo ?? "";
+    const addedMemo = `[AI 문진] ${summary}`;
+    saveLog({
+      meal: todayLog?.meal ?? 2,
+      walk: todayLog?.walk ?? false,
+      poop: todayLog?.poop ?? false,
+      pee: todayLog?.pee ?? false,
+      energy: todayLog?.energy ?? 1,
+      memo: prevMemo ? `${prevMemo}\n${addedMemo}` : addedMemo,
+    });
+    setSaved(true);
+  }
+
+  if (saved) {
+    return (
+      <div className="flex items-center justify-center gap-1.5 py-2 text-sm text-green-600 font-semibold">
+        <BookmarkCheck className="w-4 h-4" />오늘 기록에 저장됐어요
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleSave}
+      className="w-full py-3.5 rounded-2xl border border-border/60 bg-card text-sm font-semibold text-foreground flex items-center justify-center gap-2 hover:bg-secondary transition-colors"
+    >
+      <BookmarkCheck className="w-4 h-4" />오늘 기록에 저장
+    </button>
+  );
+}
+
 export function ConsultationTab() {
   const [, navigate] = useLocation();
   const { data: dogs } = useDogs();
@@ -61,15 +98,16 @@ export function ConsultationTab() {
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(5);
+  const [autoRedirectCancelled, setAutoRedirectCancelled] = useState(false);
 
   const selectedDog = dogs?.find((d) => d.id === selectedDogId) ?? dogs?.[0] ?? null;
 
   useEffect(() => {
-    if (result?.urgency !== "now") return;
+    if (result?.urgency !== "now" || autoRedirectCancelled) return;
     if (countdown <= 0) { navigate("/map"); return; }
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
-  }, [result?.urgency, countdown, navigate]);
+  }, [result?.urgency, countdown, navigate, autoRedirectCancelled]);
 
   async function handleAnalyze() {
     if (!symptoms.trim()) return;
@@ -85,6 +123,7 @@ export function ConsultationTab() {
       if (!res.ok) throw new Error(data.error || "분석 실패");
       setResult(data);
       setCountdown(5);
+      setAutoRedirectCancelled(false);
       setPageState("result");
       addItem("consultation", selectedDog?.name ?? "강아지", symptoms, data);
     } catch (err: any) {
@@ -180,10 +219,18 @@ export function ConsultationTab() {
               <p className="text-sm text-foreground font-medium">{config.description}</p>
             </div>
 
-            {result.urgency === "now" && (
-              <div className="rounded-2xl border border-red-300 bg-red-50 px-4 py-3 flex items-center justify-between">
+            {result.urgency === "now" && !autoRedirectCancelled && (
+              <div className="rounded-2xl border border-red-300 bg-red-50 px-4 py-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-bold text-red-600">주변 동물병원으로 이동합니다</p>
-                <span className="text-2xl font-bold text-red-600">{countdown}초</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xl font-bold text-red-600">{countdown}초</span>
+                  <button
+                    onClick={() => setAutoRedirectCancelled(true)}
+                    className="text-xs font-semibold text-red-400 bg-white border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                </div>
               </div>
             )}
 
@@ -206,6 +253,10 @@ export function ConsultationTab() {
                   ))}
                 </ul>
               </div>
+            )}
+
+            {selectedDog && (
+              <SaveToLogButton dogId={selectedDog.id} summary={result.summary} />
             )}
 
             <div className="flex gap-2 pt-1">

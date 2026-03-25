@@ -1,18 +1,109 @@
 import { useState } from "react";
-import { Plus, Bone, Activity, CalendarDays, CalendarClock, MoreHorizontal } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal } from "lucide-react";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
 import { Layout } from "@/components/layout";
 import { AddDogDialog } from "@/components/add-dog-dialog";
 import { EditDogDialog } from "@/components/edit-dog-dialog";
+import { DailyCheckDialog } from "@/components/daily-check-dialog";
+import { useDailyLog } from "@/hooks/use-daily-log";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion, AnimatePresence } from "framer-motion";
+
+const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
+const ENERGY_LABEL = ["축처짐", "보통", "활발"];
+const ENERGY_COLOR = ["text-blue-400", "text-green-500", "text-orange-400"];
+
+function TodayConditionBadge({ dogId }: { dogId: string }) {
+  const { todayLog } = useDailyLog(dogId);
+  if (!todayLog) return null;
+  return (
+    <div className="mt-3 pt-3 border-t border-border/30 flex items-center gap-2 relative z-10">
+      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider shrink-0">오늘</span>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-xs font-semibold text-foreground">{MEAL_LABEL[todayLog.meal]}</span>
+        <span className={`text-xs font-semibold ${ENERGY_COLOR[todayLog.energy]}`}>{ENERGY_LABEL[todayLog.energy]}</span>
+        {todayLog.walk && <span className="text-xs">🦮</span>}
+        {todayLog.poop && <span className="text-xs">💩</span>}
+      </div>
+    </div>
+  );
+}
+
+function TodayCheckButton({ dogId, onClick }: { dogId: string; onClick: () => void }) {
+  const { todayLog } = useDailyLog(dogId);
+  const MEAL_EMOJI = ["😞", "😐", "🙂", "😋"];
+
+  return (
+    <div className="bg-orange-50/80 border border-orange-100 rounded-3xl p-5 cursor-pointer hover:bg-orange-100 transition-colors group" onClick={onClick}>
+      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary mb-4 group-hover:scale-110 transition-transform">
+        <Activity className="w-6 h-6 stroke-[2.5px]" />
+      </div>
+      <h3 className="font-bold text-foreground">오늘 건강 체크</h3>
+      {todayLog ? (
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          <span className="text-xs">{MEAL_EMOJI[todayLog.meal]}</span>
+          {todayLog.walk && <span className="text-xs">🦮</span>}
+          {todayLog.poop && <span className="text-xs">💩</span>}
+          <span className="text-[10px] text-green-600 font-semibold">기록 완료</span>
+        </div>
+      ) : (
+        <p className="text-xs font-medium text-muted-foreground mt-1">컨디션 기록하기</p>
+      )}
+    </div>
+  );
+}
+
+function getHealthTip(dog: Dog): { emoji: string; title: string; body: string } {
+  const { age, breed } = dog;
+  if (age <= 1) return {
+    emoji: "🍼",
+    title: "퍼피 시기 (0~1살)",
+    body: "면역력이 약해요. 기초 예방접종(홍역·파보바이러스)을 꼭 완료하고, 사람 음식은 절대 주지 마세요.",
+  };
+  if (age <= 3) return {
+    emoji: "⚡",
+    title: "활발한 청년기 (1~3살)",
+    body: "에너지가 넘치는 시기예요. 하루 30분 이상 산책과 놀이로 스트레스를 해소해주세요.",
+  };
+  if (age <= 7) return {
+    emoji: "💪",
+    title: "건강한 성년기 (3~7살)",
+    body: "1년에 한 번 건강검진을 권장해요. 치석이 쌓이기 쉬우니 주 2~3회 양치질이 중요해요.",
+  };
+  if (age <= 10) return {
+    emoji: "🏥",
+    title: "시니어 진입기 (7~10살)",
+    body: `${breed}는 이 시기에 심장·관절 질환을 주의해야 해요. 6개월마다 혈액검사를 권장해요.`,
+  };
+  return {
+    emoji: "❤️",
+    title: "노령견 케어 (10살+)",
+    body: "계단과 점프를 줄이고 관절 보조제를 고려하세요. 식사량 변화나 음수량 증가에 주의하세요.",
+  };
+}
+
+function HealthTipWidget({ dog }: { dog: Dog }) {
+  const tip = getHealthTip(dog);
+  return (
+    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-4 flex items-start gap-3">
+      <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm shrink-0">
+        {tip.emoji}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-blue-600 mb-0.5">{dog.name} 건강 팁 · {tip.title}</p>
+        <p className="text-xs text-blue-800/80 leading-relaxed">{tip.body}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const { data: dogs, isLoading } = useDogs();
   const [, setLocation] = useLocation();
   const [editingDog, setEditingDog] = useState<Dog | null>(null);
+  const [dailyCheckOpen, setDailyCheckOpen] = useState(false);
 
   return (
     <Layout>
@@ -21,6 +112,13 @@ export default function Home() {
         open={!!editingDog}
         onOpenChange={(open) => { if (!open) setEditingDog(null); }}
       />
+      {dogs && dogs.length > 0 && (
+        <DailyCheckDialog
+          dogs={dogs}
+          open={dailyCheckOpen}
+          onOpenChange={setDailyCheckOpen}
+        />
+      )}
       <div className="px-6 py-8 flex flex-col gap-8 min-h-full">
         {/* Header */}
         <header className="flex items-center justify-between pt-2">
@@ -132,22 +230,20 @@ export default function Home() {
                         <p className="font-bold text-foreground text-lg">{dog.weight}<span className="text-sm font-medium text-muted-foreground ml-0.5">kg</span></p>
                       </div>
                     </div>
+                    <TodayConditionBadge dogId={dog.id} />
                   </motion.div>
                 ))}
               </AnimatePresence>
             </div>
 
+            {/* 나이 기반 건강 팁 */}
+            {dogs[0] && <HealthTipWidget dog={dogs[0]} />}
+
             {/* Quick Actions */}
             <div className="mt-2 space-y-4">
               <h2 className="text-xl font-bold text-foreground mb-4">빠른 실행</h2>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-orange-50/80 border border-orange-100 rounded-3xl p-5 cursor-pointer hover:bg-orange-100 transition-colors group" onClick={() => setLocation("/health")}>
-                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary mb-4 group-hover:scale-110 transition-transform">
-                    <Activity className="w-6 h-6 stroke-[2.5px]" />
-                  </div>
-                  <h3 className="font-bold text-foreground">오늘 건강 체크</h3>
-                  <p className="text-xs font-medium text-muted-foreground mt-1">컨디션 기록하기</p>
-                </div>
+                <TodayCheckButton dogId={dogs[0].id} onClick={() => setDailyCheckOpen(true)} />
                 <div
                   className="bg-purple-50/80 border border-purple-100 rounded-3xl p-5 cursor-pointer hover:bg-purple-100 transition-colors group"
                   onClick={() => setLocation("/schedule")}
@@ -158,12 +254,14 @@ export default function Home() {
                   <h3 className="font-bold text-foreground">스케줄 확인</h3>
                   <p className="text-xs font-medium text-muted-foreground mt-1">오늘 일정 보기</p>
                 </div>
-                <div className="bg-blue-50/80 border border-blue-100 rounded-3xl p-5 cursor-pointer hover:bg-blue-100 transition-colors group" onClick={() => setLocation("/schedule")}>
-                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-blue-500 mb-4 group-hover:scale-110 transition-transform">
-                    <CalendarDays className="w-6 h-6 stroke-[2.5px]" />
+                <div className="col-span-2 bg-blue-50/80 border border-blue-100 rounded-3xl p-5 cursor-pointer hover:bg-blue-100 transition-colors group flex items-center gap-4" onClick={() => setLocation("/health")}>
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-blue-500 shrink-0 group-hover:scale-110 transition-transform">
+                    <HeartPulse className="w-6 h-6 stroke-[2.5px]" />
                   </div>
-                  <h3 className="font-bold text-foreground">예방접종 관리</h3>
-                  <p className="text-xs font-medium text-muted-foreground mt-1">일정 확인하기</p>
+                  <div>
+                    <h3 className="font-bold text-foreground">AI 건강 분석</h3>
+                    <p className="text-xs font-medium text-muted-foreground mt-1">증상을 입력하면 응급도를 알려드려요</p>
+                  </div>
                 </div>
               </div>
             </div>

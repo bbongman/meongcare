@@ -11,10 +11,10 @@ export function Layout({ children }: LayoutProps) {
 
   const navItems = [
     { path: "/", label: "홈", icon: Home },
-    { path: "/map", label: "지도", icon: MapPin },
     { path: "/health", label: "건강", icon: HeartPulse },
-    { path: "/ai", label: "AI 도구", icon: Sparkles },
     { path: "/schedule", label: "스케줄", icon: CalendarClock },
+    { path: "/ai", label: "AI 도구", icon: Sparkles },
+    { path: "/map", label: "지도", icon: MapPin },
   ];
 
   return (

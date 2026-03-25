@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useDogs } from "@/hooks/use-dogs";
 import { useHealthHistory } from "@/hooks/use-health-history";
 import { DogSelector } from "@/components/health/DogSelector";
-import { Loader2, Mic, MicOff, Square } from "lucide-react";
+import { Loader2, Mic, MicOff, Square, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -246,10 +246,26 @@ export function TranslatorTab() {
 
             <p className="text-[11px] text-muted-foreground text-center">재미를 위한 번역이에요. 정확하지 않을 수 있어요.</p>
 
-            <button onClick={resetRecording}
-              className="w-full py-2.5 rounded-xl border border-border/60 text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors">
-              다시 번역
-            </button>
+            <div className="flex gap-2">
+              <button onClick={resetRecording}
+                className="flex-1 py-2.5 rounded-xl border border-border/60 text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors">
+                다시 번역
+              </button>
+              <button
+                onClick={() => {
+                  const text = `🐶 ${selectedDog?.name ?? "강아지"}의 말\n\n${result.moodEmoji} ${result.mood}\n"${result.translation}"\n\n멍케어 AI 번역기`;
+                  if (navigator.share) {
+                    navigator.share({ text });
+                  } else {
+                    navigator.clipboard.writeText(text);
+                    alert("클립보드에 복사됐어요!");
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
