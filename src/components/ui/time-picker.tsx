@@ -54,7 +54,7 @@ function SimpleCol({
       <div
         ref={ref}
         className="relative h-full overflow-y-scroll"
-        style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        style={{ scrollbarWidth: "none", touchAction: "pan-y", overscrollBehavior: "contain" } as React.CSSProperties}
       >
         <div style={{ height: padH }} />
         {items.map((label, i) => {
@@ -210,7 +210,7 @@ function WheelCol({
       <div
         ref={ref}
         className="relative h-full overflow-y-scroll"
-        style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch", cursor: "grab" } as React.CSSProperties}
+        style={{ scrollbarWidth: "none", touchAction: "pan-y", overscrollBehavior: "contain", cursor: "grab" } as React.CSSProperties}
         onScroll={handleScroll}
         onMouseDown={handleMouseDown}
       >
@@ -270,7 +270,7 @@ export function TimePicker({
   }
 
   return (
-    <div className="flex items-center rounded-2xl border border-border/60 bg-card overflow-hidden px-1 py-1 gap-0.5">
+    <div className="flex items-center rounded-2xl border border-border/60 bg-card overflow-hidden px-1 py-1 gap-0.5" style={{ touchAction: "pan-y" }}>
       <SimpleCol
         items={AM_PM}
         selectedIndex={ampmIdx}
