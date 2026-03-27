@@ -114,6 +114,13 @@ const schedules = pgTable("schedules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const userSettings = pgTable("user_settings", {
+  userId: text("user_id").primaryKey(),
+  tabOrder: jsonb("tab_order").default([]),
+  theme: text("theme").default("system"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 const pushSubscriptions = pgTable("push_subscriptions", {
   id: text("id").primaryKey(),
   userId: text("user_id"),
@@ -379,6 +386,28 @@ app.post("/api/prevention-meds/toggle", authMiddleware, async (req, res) => {
   const newId = crypto.randomUUID();
   await db.insert(preventionMeds).values({ id: newId, dogId, userId: req.user.id, type, yearMonth, done: true, doneAt: new Date().toISOString(), productName: productName ?? null });
   const rows = await db.select().from(preventionMeds).where(eq(preventionMeds.id, newId));
+  res.json(rows[0]);
+});
+
+// ── 사용자 설정 API ───────────────────────────────────────────────────────────
+app.get("/api/settings", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(userSettings).where(eq(userSettings.userId, req.user.id));
+  res.json(rows[0] ?? { tabOrder: [], theme: "system" });
+});
+
+app.post("/api/settings", authMiddleware, async (req, res) => {
+  const { tabOrder, theme } = req.body;
+  const update = {};
+  if (tabOrder !== undefined) update.tabOrder = tabOrder;
+  if (theme !== undefined) update.theme = theme;
+  update.updatedAt = new Date();
+  const existing = await db.select().from(userSettings).where(eq(userSettings.userId, req.user.id));
+  if (existing.length > 0) {
+    await db.update(userSettings).set(update).where(eq(userSettings.userId, req.user.id));
+  } else {
+    await db.insert(userSettings).values({ userId: req.user.id, ...update });
+  }
+  const rows = await db.select().from(userSettings).where(eq(userSettings.userId, req.user.id));
   res.json(rows[0]);
 });
 

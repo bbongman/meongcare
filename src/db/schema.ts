@@ -77,6 +77,13 @@ export const preventionMeds = pgTable("prevention_meds", {
   productName: text("product_name"),
 });
 
+export const userSettings = pgTable("user_settings", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  tabOrder: jsonb("tab_order").default([]),
+  theme: text("theme").default("system"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: text("id").primaryKey(),
   userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),

@@ -9,6 +9,7 @@ import { PreventionTab } from "@/components/health/PreventionTab";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { GripVertical, X, ChevronUp, ChevronDown, LayoutList } from "lucide-react";
+import { useUserSettings } from "@/hooks/use-user-settings";
 
 type Tab = "consultation" | "vet-visit" | "vaccine" | "prevention" | "stats" | "history";
 
@@ -21,30 +22,25 @@ const ALL_TABS: { id: Tab; label: string; emoji: string; desc: string }[] = [
   { id: "history", label: "히스토리", emoji: "📋", desc: "AI 분석 결과 기록" },
 ];
 
-const ORDER_KEY = "meongcare_health_tab_order";
+const DEFAULT_ORDER = ALL_TABS.map(t => t.id);
 
-function loadOrder(): Tab[] {
-  try {
-    const saved = localStorage.getItem(ORDER_KEY);
-    if (saved) {
-      const parsed: Tab[] = JSON.parse(saved);
-      const ids = ALL_TABS.map(t => t.id);
-      const valid = parsed.filter(id => ids.includes(id));
-      const missing = ids.filter(id => !valid.includes(id));
-      return [...valid, ...missing];
-    }
-  } catch {}
-  return ALL_TABS.map(t => t.id);
+function mergeOrder(saved: string[]): Tab[] {
+  const ids = ALL_TABS.map(t => t.id);
+  const valid = saved.filter((id): id is Tab => ids.includes(id as Tab));
+  const missing = ids.filter(id => !valid.includes(id));
+  return [...valid, ...missing];
 }
 
 export default function Health() {
   const [activeTab, setActiveTab] = useState<Tab>("consultation");
-  const [tabOrder, setTabOrder] = useState<Tab[]>(loadOrder);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { tabOrder: savedOrder, saveSettings } = useUserSettings();
 
-  useEffect(() => {
-    localStorage.setItem(ORDER_KEY, JSON.stringify(tabOrder));
-  }, [tabOrder]);
+  const tabOrder: Tab[] = savedOrder.length > 0 ? mergeOrder(savedOrder) : DEFAULT_ORDER;
+
+  function setTabOrder(next: Tab[]) {
+    saveSettings({ tabOrder: next });
+  }
 
   const orderedTabs = tabOrder.map(id => ALL_TABS.find(t => t.id === id)!).filter(Boolean);
 
