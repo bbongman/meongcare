@@ -77,6 +77,15 @@ export const preventionMeds = pgTable("prevention_meds", {
   productName: text("product_name"),
 });
 
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  clientId: text("client_id").notNull().unique(),
+  endpoint: text("endpoint").notNull(),
+  keys: jsonb("keys").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const aiLogs = pgTable("ai_logs", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

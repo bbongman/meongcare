@@ -114,6 +114,15 @@ const schedules = pgTable("schedules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const pushSubscriptions = pgTable("push_subscriptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id"),
+  clientId: text("client_id").notNull(),
+  endpoint: text("endpoint").notNull(),
+  keys: jsonb("keys").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 const aiLogs = pgTable("ai_logs", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -410,7 +419,9 @@ app.post("/api/schedules", authMiddleware, async (req, res) => {
   const scheduleId = id || crypto.randomUUID();
   await db.insert(schedules).values({ id: scheduleId, userId: req.user.id, type, title, time, repeat: repeat ?? "none", dogId: dogId ?? null, dogName: dogName ?? null, medicineName: medicineName ?? null, vaccineDate: vaccineDate ?? null, enabled: enabled ?? true });
   const rows = await db.select().from(schedules).where(eq(schedules.id, scheduleId));
-  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+  const s = { ...rows[0], createdAt: rows[0].createdAt?.toISOString() };
+  serverSchedules.set(scheduleId, { ...s, _userId: req.user.id });
+  res.json(s);
 });
 
 app.patch("/api/schedules/:id", authMiddleware, async (req, res) => {
@@ -426,11 +437,14 @@ app.patch("/api/schedules/:id", authMiddleware, async (req, res) => {
   if (vaccineDate !== undefined) update.vaccineDate = vaccineDate;
   await db.update(schedules).set(update).where(and(eq(schedules.id, req.params.id), eq(schedules.userId, req.user.id)));
   const rows = await db.select().from(schedules).where(eq(schedules.id, req.params.id));
-  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+  const s = { ...rows[0], createdAt: rows[0].createdAt?.toISOString() };
+  serverSchedules.set(req.params.id, { ...s, _userId: req.user.id });
+  res.json(s);
 });
 
 app.delete("/api/schedules/:id", authMiddleware, async (req, res) => {
   await db.delete(schedules).where(and(eq(schedules.id, req.params.id), eq(schedules.userId, req.user.id)));
+  serverSchedules.delete(req.params.id);
   res.json({ ok: true });
 });
 
@@ -471,20 +485,49 @@ const serverSchedules = new Map();
 const firedThisMinute = new Map();
 const firedOnce = new Set();
 
+// 서버 시작 시 DB에서 구독 + 스케줄 복원
+(async () => {
+  try {
+    const subs = await db.select().from(pushSubscriptions);
+    for (const s of subs) {
+      subscriptions.set(s.clientId, { endpoint: s.endpoint, keys: s.keys, userId: s.userId });
+    }
+    console.log(`푸시 구독 복원: ${subs.length}개`);
+
+    const scheds = await db.select().from(schedules);
+    for (const s of scheds) {
+      serverSchedules.set(s.id, { ...s, _userId: s.userId, createdAt: s.createdAt?.toISOString() });
+    }
+    console.log(`스케줄 복원: ${scheds.length}개`);
+  } catch (e) {
+    console.error("초기화 복원 실패:", e.message);
+  }
+})();
+
 app.get("/api/vapid-public-key", (req, res) => {
   res.json({ publicKey: vapidKeys.publicKey });
 });
 
-app.post("/api/push-subscribe", (req, res) => {
+app.post("/api/push-subscribe", async (req, res) => {
   const { subscription, clientId, userId } = req.body;
   if (!subscription || !clientId) return res.status(400).json({ error: "missing fields" });
   subscriptions.set(clientId, { ...subscription, userId: userId || null });
+  // DB에도 저장 (upsert 방식)
+  try {
+    const existing = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.clientId, clientId));
+    if (existing.length > 0) {
+      await db.update(pushSubscriptions).set({ endpoint: subscription.endpoint, keys: subscription.keys, userId: userId || null }).where(eq(pushSubscriptions.clientId, clientId));
+    } else {
+      await db.insert(pushSubscriptions).values({ id: crypto.randomUUID(), clientId, endpoint: subscription.endpoint, keys: subscription.keys, userId: userId || null });
+    }
+  } catch (e) { console.error("구독 저장 실패:", e.message); }
   res.json({ ok: true });
 });
 
-app.delete("/api/push-unsubscribe", (req, res) => {
+app.delete("/api/push-unsubscribe", async (req, res) => {
   const { clientId } = req.body;
   subscriptions.delete(clientId);
+  try { await db.delete(pushSubscriptions).where(eq(pushSubscriptions.clientId, clientId)); } catch {}
   res.json({ ok: true });
 });
 
