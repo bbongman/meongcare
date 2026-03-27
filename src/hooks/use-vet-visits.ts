@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { userKey } from "@/lib/user-storage";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { apiFetch } from "@/lib/api";
 
 export interface VetVisitItem {
   name: string;
@@ -22,49 +22,39 @@ export interface VetVisit {
   createdAt: string;
 }
 
-const BASE_KEY = "meongcare_vet_visits";
-
-function loadVisits(): VetVisit[] {
-  try {
-    const data = localStorage.getItem(userKey(BASE_KEY));
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveVisits(items: VetVisit[]) {
-  localStorage.setItem(userKey(BASE_KEY), JSON.stringify(items));
-}
-
 export function useVetVisits() {
-  const [visits, setVisits] = useState<VetVisit[]>(loadVisits);
+  const queryClient = useQueryClient();
 
-  const addVisit = useCallback((visit: Omit<VetVisit, "id" | "createdAt">) => {
-    const item: VetVisit = {
-      ...visit,
-      id: uuidv4(),
-      createdAt: new Date().toISOString(),
-    };
-    setVisits((prev) => {
-      const next = [item, ...prev].slice(0, 100);
-      saveVisits(next);
-      return next;
-    });
-    return item;
-  }, []);
+  const { data: visits = [] } = useQuery<VetVisit[]>({
+    queryKey: ["vet-visits"],
+    queryFn: () => apiFetch<VetVisit[]>("/api/vet-visits"),
+  });
 
-  const removeVisit = useCallback((id: string) => {
-    setVisits((prev) => {
-      const next = prev.filter((v) => v.id !== id);
-      saveVisits(next);
-      return next;
-    });
-  }, []);
+  const addMutation = useMutation({
+    mutationFn: (visit: Omit<VetVisit, "id" | "createdAt">) =>
+      apiFetch<VetVisit>("/api/vet-visits", { method: "POST", body: JSON.stringify(visit) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["vet-visits"] }); },
+  });
 
-  const getRecent = useCallback((count = 3) => {
-    return visits.slice(0, count);
-  }, [visits]);
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/vet-visits/${id}`, { method: "DELETE" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["vet-visits"] }); },
+  });
+
+  const addVisit = useCallback(
+    (visit: Omit<VetVisit, "id" | "createdAt">) => addMutation.mutateAsync(visit),
+    [addMutation]
+  );
+
+  const removeVisit = useCallback(
+    (id: string) => removeMutation.mutateAsync(id),
+    [removeMutation]
+  );
+
+  const getRecent = useCallback(
+    (count = 3) => visits.slice(0, count),
+    [visits]
+  );
 
   return { visits, addVisit, removeVisit, getRecent };
 }

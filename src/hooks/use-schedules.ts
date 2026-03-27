@@ -1,7 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { v4 as uuidv4 } from "uuid";
-import { userKey } from "@/lib/user-storage";
-import { getAuthUserId } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/api";
 
 export type ScheduleType = "meal" | "medicine" | "walk" | "vaccine";
 export type RepeatType = "daily" | "weekly" | "monthly" | "none";
@@ -20,85 +18,36 @@ export interface Schedule {
   createdAt: string;
 }
 
-const BASE_KEY = "meongcare_schedules";
-
-const getSchedulesFromStorage = (): Schedule[] => {
-  const data = localStorage.getItem(userKey(BASE_KEY));
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-};
-
-const saveSchedulesToStorage = (schedules: Schedule[]) => {
-  localStorage.setItem(userKey(BASE_KEY), JSON.stringify(schedules));
-};
-
-export function syncSchedulesToServer() {
-  const schedules = getSchedulesFromStorage();
-  const userId = getAuthUserId();
-  fetch("/api/schedules/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ schedules, userId }),
-  }).catch(() => {});
-}
-
 export function useSchedules() {
-  return useQuery({
+  return useQuery<Schedule[]>({
     queryKey: ["schedules"],
-    queryFn: () => getSchedulesFromStorage(),
+    queryFn: () => apiFetch<Schedule[]>("/api/schedules"),
   });
 }
 
 export function useAddSchedule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Omit<Schedule, "id" | "createdAt">) => {
-      const newSchedule: Schedule = {
-        ...data,
-        id: uuidv4(),
-        createdAt: new Date().toISOString(),
-      };
-      const current = getSchedulesFromStorage();
-      saveSchedulesToStorage([newSchedule, ...current]);
-      return newSchedule;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      syncSchedulesToServer();
-    },
+    mutationFn: (data: Omit<Schedule, "id" | "createdAt">) =>
+      apiFetch<Schedule>("/api/schedules", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["schedules"] }); },
   });
 }
 
 export function useUpdateSchedule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Schedule> }) => {
-      const schedules = getSchedulesFromStorage();
-      const updated = schedules.map((s) => (s.id === id ? { ...s, ...updates } : s));
-      saveSchedulesToStorage(updated);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      syncSchedulesToServer();
-    },
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Schedule> }) =>
+      apiFetch<Schedule>(`/api/schedules/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["schedules"] }); },
   });
 }
 
 export function useDeleteSchedule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const schedules = getSchedulesFromStorage();
-      saveSchedulesToStorage(schedules.filter((s) => s.id !== id));
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      syncSchedulesToServer();
-    },
+    mutationFn: (id: string) => apiFetch(`/api/schedules/${id}`, { method: "DELETE" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["schedules"] }); },
   });
 }
 
@@ -115,3 +64,6 @@ export const REPEAT_LABELS: Record<RepeatType, string> = {
   monthly: "매월",
   none: "반복 없음",
 };
+
+// 레거시 호환 - 더 이상 localStorage를 쓰지 않으므로 no-op
+export function syncSchedulesToServer() {}

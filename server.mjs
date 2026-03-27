@@ -3,31 +3,119 @@ import Anthropic from "@anthropic-ai/sdk";
 import webpush from "web-push";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 import crypto from "crypto";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
+import { eq, and, desc } from "drizzle-orm";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+// ── DB 연결 ──────────────────────────────────────────────────────────────────
+const sql = neon(process.env.DATABASE_URL);
+const db = drizzle(sql);
+
+// ── 스키마 인라인 (ESM에서 import 편의상) ──────────────────────────────────
+import { pgTable, text, boolean, integer, real, jsonb, timestamp } from "drizzle-orm/pg-core";
+
+const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  hash: text("hash").notNull(),
+  role: text("role").notNull().default("user"),
+  gender: text("gender"),
+  phone: text("phone"),
+  memo: text("memo"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+const dogs = pgTable("dogs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  breed: text("breed").notNull(),
+  age: real("age").notNull().default(0),
+  gender: text("gender").notNull(),
+  weight: real("weight").default(0),
+  neutered: boolean("neutered").default(false),
+  photo: text("photo"),
+  birthday: text("birthday"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+const dailyLogs = pgTable("daily_logs", {
+  id: text("id").primaryKey(),
+  dogId: text("dog_id").notNull(),
+  userId: text("user_id").notNull(),
+  date: text("date").notNull(),
+  meal: integer("meal").notNull().default(0),
+  walk: boolean("walk").default(false),
+  poop: boolean("poop").default(false),
+  pee: boolean("pee").default(false),
+  energy: integer("energy").notNull().default(1),
+  memo: text("memo").default(""),
+});
+
+const vetVisits = pgTable("vet_visits", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  dogName: text("dog_name").notNull(),
+  hospitalName: text("hospital_name").notNull(),
+  visitDate: text("visit_date").notNull(),
+  items: jsonb("items").default([]),
+  totalPrice: integer("total_price").default(0),
+  diagnosis: text("diagnosis").default(""),
+  prescriptions: jsonb("prescriptions").default([]),
+  nextVisitDate: text("next_visit_date").default(""),
+  notes: text("notes").default(""),
+  receiptPhoto: text("receipt_photo"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+const vaccines = pgTable("vaccines", {
+  id: text("id").primaryKey(),
+  dogId: text("dog_id").notNull(),
+  userId: text("user_id").notNull(),
+  vaccineName: text("vaccine_name").notNull(),
+  date: text("date").notNull(),
+  hospitalName: text("hospital_name").default(""),
+  nextDate: text("next_date").default(""),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+const preventionMeds = pgTable("prevention_meds", {
+  id: text("id").primaryKey(),
+  dogId: text("dog_id").notNull(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(),
+  yearMonth: text("year_month").notNull(),
+  done: boolean("done").default(false),
+  doneAt: text("done_at"),
+  productName: text("product_name"),
+});
+
+const schedules = pgTable("schedules", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  time: text("time").notNull(),
+  repeat: text("repeat").notNull().default("none"),
+  dogId: text("dog_id"),
+  dogName: text("dog_name"),
+  medicineName: text("medicine_name"),
+  vaccineDate: text("vaccine_date"),
+  enabled: boolean("enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ── JWT 시크릿 ──────────────────────────────────────────────────────────────
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
-
-// ── 사용자 저장소 (JSON 파일) ────────────────────────────────────────────────
-// Railway 볼륨: /app/data, 로컬 개발: ./data
-const DATA_DIR = existsSync("/app/data") ? "/app/data" : path.join(__dirname, "data");
-if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-const USERS_FILE = path.join(DATA_DIR, "users.json");
-
-function loadUsers() {
-  if (!existsSync(USERS_FILE)) return [];
-  try { return JSON.parse(readFileSync(USERS_FILE, "utf8")); } catch { return []; }
-}
-function saveUsers(users) {
-  writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-}
 
 // ── 인증 미들웨어 ────────────────────────────────────────────────────────────
 function authMiddleware(req, res, next) {
@@ -41,25 +129,27 @@ function authMiddleware(req, res, next) {
   }
 }
 
+async function adminOnly(req, res, next) {
+  const rows = await db.select().from(users).where(eq(users.id, req.user.id));
+  if (!rows[0] || rows[0].role !== "admin") return res.status(403).json({ error: "관리자만 접근할 수 있어요." });
+  next();
+}
+
 // ── 관리자 계정 초기화 ───────────────────────────────────────────────────────
 const ADMIN_NAME = "관리자";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "meong1234";
 (async () => {
-  const users = loadUsers();
-  if (!users.find((u) => u.name === ADMIN_NAME)) {
-    const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-    users.push({ id: crypto.randomUUID(), name: ADMIN_NAME, hash, role: "admin", createdAt: new Date().toISOString() });
-    saveUsers(users);
-    console.log(`👑 관리자 계정 생성: ${ADMIN_NAME} / ${ADMIN_PASSWORD}`);
+  try {
+    const existing = await db.select().from(users).where(eq(users.name, ADMIN_NAME));
+    if (existing.length === 0) {
+      const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      await db.insert(users).values({ id: crypto.randomUUID(), name: ADMIN_NAME, hash, role: "admin" });
+      console.log(`관리자 계정 생성: ${ADMIN_NAME} / ${ADMIN_PASSWORD}`);
+    }
+  } catch (e) {
+    console.error("관리자 초기화 실패:", e.message);
   }
 })();
-
-function adminOnly(req, res, next) {
-  const users = loadUsers();
-  const user = users.find((u) => u.id === req.user.id);
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "관리자만 접근할 수 있어요." });
-  next();
-}
 
 // ── 회원가입 / 로그인 API ────────────────────────────────────────────────────
 app.post("/api/auth/register", async (req, res) => {
@@ -67,27 +157,23 @@ app.post("/api/auth/register", async (req, res) => {
   if (!name?.trim() || !password) return res.status(400).json({ error: "이름과 비밀번호를 입력해주세요." });
   if (password.length < 4) return res.status(400).json({ error: "비밀번호는 4자 이상이어야 해요." });
 
-  const users = loadUsers();
-  if (users.find((u) => u.name === name.trim())) {
-    return res.status(409).json({ error: "이미 사용 중인 이름이에요." });
-  }
+  const existing = await db.select().from(users).where(eq(users.name, name.trim()));
+  if (existing.length > 0) return res.status(409).json({ error: "이미 사용 중인 이름이에요." });
 
   const id = crypto.randomUUID();
   const hash = await bcrypt.hash(password, 10);
-  const user = { id, name: name.trim(), hash, createdAt: new Date().toISOString() };
-  users.push(user);
-  saveUsers(users);
+  await db.insert(users).values({ id, name: name.trim(), hash, role: "user" });
 
-  const token = jwt.sign({ id, name: user.name }, JWT_SECRET, { expiresIn: "30d" });
-  res.json({ token, user: { id, name: user.name } });
+  const token = jwt.sign({ id, name: name.trim() }, JWT_SECRET, { expiresIn: "30d" });
+  res.json({ token, user: { id, name: name.trim() } });
 });
 
 app.post("/api/auth/login", async (req, res) => {
   const { name, password } = req.body;
   if (!name?.trim() || !password) return res.status(400).json({ error: "이름과 비밀번호를 입력해주세요." });
 
-  const users = loadUsers();
-  const user = users.find((u) => u.name === name.trim());
+  const rows = await db.select().from(users).where(eq(users.name, name.trim()));
+  const user = rows[0];
   if (!user) return res.status(401).json({ error: "존재하지 않는 사용자예요." });
 
   const valid = await bcrypt.compare(password, user.hash);
@@ -97,64 +183,239 @@ app.post("/api/auth/login", async (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name } });
 });
 
-app.get("/api/auth/me", authMiddleware, (req, res) => {
-  const users = loadUsers();
-  const user = users.find((u) => u.id === req.user.id);
-  if (!user) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
-  const { hash, ...safe } = user;
+app.get("/api/auth/me", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(users).where(eq(users.id, req.user.id));
+  if (!rows[0]) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
+  const { hash, ...safe } = rows[0];
   res.json({ user: safe });
 });
 
-app.patch("/api/auth/profile", authMiddleware, (req, res) => {
+app.patch("/api/auth/profile", authMiddleware, async (req, res) => {
   const { gender, phone, memo } = req.body;
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.id === req.user.id);
-  if (idx === -1) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
-  if (gender !== undefined) users[idx].gender = gender;
-  if (phone !== undefined) users[idx].phone = phone;
-  if (memo !== undefined) users[idx].memo = memo;
-  saveUsers(users);
-  const { hash, ...safe } = users[idx];
+  const update = {};
+  if (gender !== undefined) update.gender = gender;
+  if (phone !== undefined) update.phone = phone;
+  if (memo !== undefined) update.memo = memo;
+  await db.update(users).set(update).where(eq(users.id, req.user.id));
+  const rows = await db.select().from(users).where(eq(users.id, req.user.id));
+  const { hash, ...safe } = rows[0];
   res.json({ user: safe });
 });
 
 // ── 관리자 API ───────────────────────────────────────────────────────────────
-app.get("/api/admin/users", authMiddleware, adminOnly, (req, res) => {
-  const users = loadUsers().map(({ hash, ...u }) => u);
-  res.json({ users });
+app.get("/api/admin/users", authMiddleware, adminOnly, async (req, res) => {
+  const rows = await db.select().from(users);
+  res.json({ users: rows.map(({ hash, ...u }) => u) });
 });
 
 app.patch("/api/admin/reset-password", authMiddleware, adminOnly, async (req, res) => {
   const { targetName, newPassword } = req.body;
   if (!targetName || !newPassword) return res.status(400).json({ error: "이름과 새 비밀번호를 입력해주세요." });
   if (newPassword.length < 4) return res.status(400).json({ error: "비밀번호는 4자 이상이어야 해요." });
-
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.name === targetName);
-  if (idx === -1) return res.status(404).json({ error: "해당 사용자를 찾을 수 없어요." });
-
-  users[idx].hash = await bcrypt.hash(newPassword, 10);
-  saveUsers(users);
-  console.log(`🔑 비밀번호 초기화: ${targetName}`);
+  const hash = await bcrypt.hash(newPassword, 10);
+  const rows = await db.select().from(users).where(eq(users.name, targetName));
+  if (!rows[0]) return res.status(404).json({ error: "해당 사용자를 찾을 수 없어요." });
+  await db.update(users).set({ hash }).where(eq(users.name, targetName));
   res.json({ ok: true, message: `${targetName}의 비밀번호가 변경됐어요.` });
 });
 
-app.delete("/api/admin/users/:id", authMiddleware, adminOnly, (req, res) => {
-  const users = loadUsers();
-  const target = users.find((u) => u.id === req.params.id);
-  if (!target) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
-  if (target.role === "admin") return res.status(403).json({ error: "관리자 계정은 삭제할 수 없어요." });
-  saveUsers(users.filter((u) => u.id !== req.params.id));
+app.delete("/api/admin/users/:id", authMiddleware, adminOnly, async (req, res) => {
+  const rows = await db.select().from(users).where(eq(users.id, req.params.id));
+  if (!rows[0]) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
+  if (rows[0].role === "admin") return res.status(403).json({ error: "관리자 계정은 삭제할 수 없어요." });
+  await db.delete(users).where(eq(users.id, req.params.id));
   res.json({ ok: true });
 });
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+// ── 강아지 CRUD ──────────────────────────────────────────────────────────────
+app.get("/api/dogs", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(dogs).where(eq(dogs.userId, req.user.id));
+  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString() })));
 });
 
+app.post("/api/dogs", authMiddleware, async (req, res) => {
+  const { id, name, breed, age, gender, weight, neutered, photo, birthday } = req.body;
+  const dogId = id || crypto.randomUUID();
+  await db.insert(dogs).values({ id: dogId, userId: req.user.id, name, breed, age: age ?? 0, gender, weight: weight ?? 0, neutered: neutered ?? false, photo: photo ?? null, birthday: birthday ?? null });
+  const rows = await db.select().from(dogs).where(eq(dogs.id, dogId));
+  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+});
+
+app.patch("/api/dogs/:id", authMiddleware, async (req, res) => {
+  const { name, breed, age, gender, weight, neutered, photo, birthday } = req.body;
+  const update = {};
+  if (name !== undefined) update.name = name;
+  if (breed !== undefined) update.breed = breed;
+  if (age !== undefined) update.age = age;
+  if (gender !== undefined) update.gender = gender;
+  if (weight !== undefined) update.weight = weight;
+  if (neutered !== undefined) update.neutered = neutered;
+  if (photo !== undefined) update.photo = photo;
+  if (birthday !== undefined) update.birthday = birthday;
+  await db.update(dogs).set(update).where(and(eq(dogs.id, req.params.id), eq(dogs.userId, req.user.id)));
+  const rows = await db.select().from(dogs).where(eq(dogs.id, req.params.id));
+  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+});
+
+app.delete("/api/dogs/:id", authMiddleware, async (req, res) => {
+  await db.delete(dogs).where(and(eq(dogs.id, req.params.id), eq(dogs.userId, req.user.id)));
+  res.json({ ok: true });
+});
+
+// ── 일일 로그 CRUD ───────────────────────────────────────────────────────────
+app.get("/api/daily-logs/:dogId", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(dailyLogs)
+    .where(and(eq(dailyLogs.dogId, req.params.dogId), eq(dailyLogs.userId, req.user.id)));
+  res.json(rows);
+});
+
+app.post("/api/daily-logs", authMiddleware, async (req, res) => {
+  const { id, dogId, date, meal, walk, poop, pee, energy, memo } = req.body;
+  const existing = await db.select().from(dailyLogs)
+    .where(and(eq(dailyLogs.dogId, dogId), eq(dailyLogs.userId, req.user.id), eq(dailyLogs.date, date)));
+  if (existing[0]) {
+    await db.update(dailyLogs).set({ meal, walk, poop, pee, energy, memo })
+      .where(eq(dailyLogs.id, existing[0].id));
+    const updated = await db.select().from(dailyLogs).where(eq(dailyLogs.id, existing[0].id));
+    return res.json(updated[0]);
+  }
+  const logId = id || crypto.randomUUID();
+  await db.insert(dailyLogs).values({ id: logId, dogId, userId: req.user.id, date, meal: meal ?? 0, walk: walk ?? false, poop: poop ?? false, pee: pee ?? false, energy: energy ?? 1, memo: memo ?? "" });
+  const rows = await db.select().from(dailyLogs).where(eq(dailyLogs.id, logId));
+  res.json(rows[0]);
+});
+
+// ── 병원 방문 CRUD ───────────────────────────────────────────────────────────
+app.get("/api/vet-visits", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(vetVisits)
+    .where(eq(vetVisits.userId, req.user.id))
+    .orderBy(desc(vetVisits.createdAt));
+  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString() })));
+});
+
+app.post("/api/vet-visits", authMiddleware, async (req, res) => {
+  const { id, dogName, hospitalName, visitDate, items, totalPrice, diagnosis, prescriptions, nextVisitDate, notes, receiptPhoto } = req.body;
+  const visitId = id || crypto.randomUUID();
+  await db.insert(vetVisits).values({ id: visitId, userId: req.user.id, dogName, hospitalName, visitDate, items: items ?? [], totalPrice: totalPrice ?? 0, diagnosis: diagnosis ?? "", prescriptions: prescriptions ?? [], nextVisitDate: nextVisitDate ?? "", notes: notes ?? "", receiptPhoto: receiptPhoto ?? null });
+  const rows = await db.select().from(vetVisits).where(eq(vetVisits.id, visitId));
+  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+});
+
+app.delete("/api/vet-visits/:id", authMiddleware, async (req, res) => {
+  await db.delete(vetVisits).where(and(eq(vetVisits.id, req.params.id), eq(vetVisits.userId, req.user.id)));
+  res.json({ ok: true });
+});
+
+// ── 예방접종 CRUD ─────────────────────────────────────────────────────────────
+app.get("/api/vaccines/:dogId", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(vaccines)
+    .where(and(eq(vaccines.dogId, req.params.dogId), eq(vaccines.userId, req.user.id)))
+    .orderBy(desc(vaccines.date));
+  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString() })));
+});
+
+app.post("/api/vaccines", authMiddleware, async (req, res) => {
+  const { id, dogId, vaccineName, date, hospitalName, nextDate, notes } = req.body;
+  const vaccineId = id || crypto.randomUUID();
+  await db.insert(vaccines).values({ id: vaccineId, dogId, userId: req.user.id, vaccineName, date, hospitalName: hospitalName ?? "", nextDate: nextDate ?? "", notes: notes ?? "" });
+  const rows = await db.select().from(vaccines).where(eq(vaccines.id, vaccineId));
+  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+});
+
+app.delete("/api/vaccines/:id", authMiddleware, async (req, res) => {
+  await db.delete(vaccines).where(and(eq(vaccines.id, req.params.id), eq(vaccines.userId, req.user.id)));
+  res.json({ ok: true });
+});
+
+// 전체 강아지 다가오는 접종 조회
+app.get("/api/vaccines/upcoming/all", authMiddleware, async (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await db.select().from(vaccines).where(eq(vaccines.userId, req.user.id));
+  const upcoming = rows
+    .filter(v => v.nextDate && v.nextDate >= today)
+    .sort((a, b) => a.nextDate.localeCompare(b.nextDate))
+    .slice(0, 3)
+    .map(r => ({ ...r, createdAt: r.createdAt?.toISOString() }));
+  res.json(upcoming);
+});
+
+// ── 예방약 CRUD ───────────────────────────────────────────────────────────────
+app.get("/api/prevention-meds/:dogId", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(preventionMeds)
+    .where(and(eq(preventionMeds.dogId, req.params.dogId), eq(preventionMeds.userId, req.user.id)));
+  res.json(rows);
+});
+
+app.post("/api/prevention-meds/toggle", authMiddleware, async (req, res) => {
+  const { dogId, type, yearMonth, productName } = req.body;
+  const existing = await db.select().from(preventionMeds)
+    .where(and(eq(preventionMeds.dogId, dogId), eq(preventionMeds.userId, req.user.id), eq(preventionMeds.type, type), eq(preventionMeds.yearMonth, yearMonth)));
+  if (existing[0]) {
+    const newDone = !existing[0].done;
+    await db.update(preventionMeds).set({ done: newDone, doneAt: newDone ? new Date().toISOString() : null })
+      .where(eq(preventionMeds.id, existing[0].id));
+    const updated = await db.select().from(preventionMeds).where(eq(preventionMeds.id, existing[0].id));
+    return res.json(updated[0]);
+  }
+  const newId = crypto.randomUUID();
+  await db.insert(preventionMeds).values({ id: newId, dogId, userId: req.user.id, type, yearMonth, done: true, doneAt: new Date().toISOString(), productName: productName ?? null });
+  const rows = await db.select().from(preventionMeds).where(eq(preventionMeds.id, newId));
+  res.json(rows[0]);
+});
+
+// ── 스케줄 CRUD ───────────────────────────────────────────────────────────────
+app.get("/api/schedules", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(schedules).where(eq(schedules.userId, req.user.id));
+  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString() })));
+});
+
+app.post("/api/schedules", authMiddleware, async (req, res) => {
+  const { id, type, title, time, repeat, dogId, dogName, medicineName, vaccineDate, enabled } = req.body;
+  const scheduleId = id || crypto.randomUUID();
+  await db.insert(schedules).values({ id: scheduleId, userId: req.user.id, type, title, time, repeat: repeat ?? "none", dogId: dogId ?? null, dogName: dogName ?? null, medicineName: medicineName ?? null, vaccineDate: vaccineDate ?? null, enabled: enabled ?? true });
+  const rows = await db.select().from(schedules).where(eq(schedules.id, scheduleId));
+  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+});
+
+app.patch("/api/schedules/:id", authMiddleware, async (req, res) => {
+  const { enabled, title, time, repeat, dogId, dogName, medicineName, vaccineDate } = req.body;
+  const update = {};
+  if (enabled !== undefined) update.enabled = enabled;
+  if (title !== undefined) update.title = title;
+  if (time !== undefined) update.time = time;
+  if (repeat !== undefined) update.repeat = repeat;
+  if (dogId !== undefined) update.dogId = dogId;
+  if (dogName !== undefined) update.dogName = dogName;
+  if (medicineName !== undefined) update.medicineName = medicineName;
+  if (vaccineDate !== undefined) update.vaccineDate = vaccineDate;
+  await db.update(schedules).set(update).where(and(eq(schedules.id, req.params.id), eq(schedules.userId, req.user.id)));
+  const rows = await db.select().from(schedules).where(eq(schedules.id, req.params.id));
+  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+});
+
+app.delete("/api/schedules/:id", authMiddleware, async (req, res) => {
+  await db.delete(schedules).where(and(eq(schedules.id, req.params.id), eq(schedules.userId, req.user.id)));
+  res.json({ ok: true });
+});
+
+// ── 스케줄 동기화 (레거시 호환) ───────────────────────────────────────────────
+app.post("/api/schedules/sync", (req, res) => {
+  const { schedules: sched, userId } = req.body;
+  if (!Array.isArray(sched)) return res.status(400).json({ error: "schedules must be array" });
+  if (userId) {
+    for (const [id, s] of serverSchedules) {
+      if (s._userId === userId) serverSchedules.delete(id);
+    }
+  } else {
+    serverSchedules.clear();
+  }
+  sched.forEach((s) => serverSchedules.set(s.id, { ...s, _userId: userId || null }));
+  res.json({ ok: true });
+});
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
 // ── VAPID 설정 ──────────────────────────────────────────────────────────────
-// 배포 환경: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY 환경변수 사용
-// 로컬 개발: vapid.json 파일 자동 생성
 const VAPID_FILE = path.join(__dirname, "vapid.json");
 let vapidKeys;
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -164,24 +425,16 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 } else {
   vapidKeys = webpush.generateVAPIDKeys();
   writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
-  console.log("✅ VAPID 키 생성 완료 →", VAPID_FILE);
-  console.log("🔑 배포 시 아래 값을 환경변수로 등록하세요:");
-  console.log("   VAPID_PUBLIC_KEY =", vapidKeys.publicKey);
-  console.log("   VAPID_PRIVATE_KEY =", vapidKeys.privateKey);
+  console.log("VAPID 키 생성 완료");
 }
-webpush.setVapidDetails(
-  "mailto:admin@meongcare.app",
-  vapidKeys.publicKey,
-  vapidKeys.privateKey
-);
+webpush.setVapidDetails("mailto:admin@meongcare.app", vapidKeys.publicKey, vapidKeys.privateKey);
 
-// ── 인메모리 저장소 ──────────────────────────────────────────────────────────
-const subscriptions = new Map(); // clientId → PushSubscription
-const serverSchedules = new Map(); // id → Schedule
-const firedThisMinute = new Map(); // scheduleId → "HH:mm"
-const firedOnce = new Set(); // scheduleId (repeat=none 전송 완료)
+// ── 인메모리 (푸시 알림용) ────────────────────────────────────────────────────
+const subscriptions = new Map();
+const serverSchedules = new Map();
+const firedThisMinute = new Map();
+const firedOnce = new Set();
 
-// ── 푸시 알림 API ─────────────────────────────────────────────────────────────
 app.get("/api/vapid-public-key", (req, res) => {
   res.json({ publicKey: vapidKeys.publicKey });
 });
@@ -190,7 +443,6 @@ app.post("/api/push-subscribe", (req, res) => {
   const { subscription, clientId, userId } = req.body;
   if (!subscription || !clientId) return res.status(400).json({ error: "missing fields" });
   subscriptions.set(clientId, { ...subscription, userId: userId || null });
-  console.log(`📱 푸시 구독 등록: ${clientId} userId=${userId || "anonymous"} (총 ${subscriptions.size}개)`);
   res.json({ ok: true });
 });
 
@@ -200,37 +452,14 @@ app.delete("/api/push-unsubscribe", (req, res) => {
   res.json({ ok: true });
 });
 
-// ── 스케줄 동기화 ─────────────────────────────────────────────────────────────
-app.post("/api/schedules/sync", (req, res) => {
-  const { schedules, userId } = req.body;
-  if (!Array.isArray(schedules)) return res.status(400).json({ error: "schedules must be array" });
-  // 해당 userId의 기존 스케줄만 제거 후 재등록
-  if (userId) {
-    for (const [id, s] of serverSchedules) {
-      if (s._userId === userId) serverSchedules.delete(id);
-    }
-  } else {
-    serverSchedules.clear();
-  }
-  schedules.forEach((s) => serverSchedules.set(s.id, { ...s, _userId: userId || null }));
-  console.log(`🗓️ 스케줄 동기화: ${schedules.length}개 (userId=${userId || "anonymous"})`);
-  res.json({ ok: true });
-});
-
-// ── 테스트 알림 ───────────────────────────────────────────────────────────────
 app.post("/api/push-test", async (req, res) => {
   const { userId } = req.body;
   const targets = [...subscriptions.entries()].filter(([, sub]) => {
     if (userId && sub.userId) return sub.userId === userId;
     return true;
   });
-  if (targets.length === 0) {
-    return res.status(400).json({ error: "등록된 구독자가 없어요. 알림 허용 버튼을 먼저 눌러주세요." });
-  }
-  const payload = JSON.stringify({
-    title: "🐾 멍케어 테스트 알림",
-    body: "푸시 알림이 정상 작동하고 있어요!",
-  });
+  if (targets.length === 0) return res.status(400).json({ error: "등록된 구독자가 없어요." });
+  const payload = JSON.stringify({ title: "멍케어 테스트 알림", body: "푸시 알림이 정상 작동하고 있어요!" });
   const results = await Promise.allSettled(
     targets.map(([clientId, sub]) => {
       const pushSub = { endpoint: sub.endpoint, keys: sub.keys };
@@ -241,21 +470,16 @@ app.post("/api/push-test", async (req, res) => {
     })
   );
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
-  console.log(`🔔 테스트 알림: ${succeeded}/${results.length} 성공`);
   res.json({ ok: true, sent: succeeded, total: results.length });
 });
 
-// ── 스케줄 알림 발송 ──────────────────────────────────────────────────────────
 function sendPushToUser(userId, payload) {
   const text = JSON.stringify(payload);
   for (const [clientId, sub] of subscriptions) {
-    // userId가 일치하거나, 둘 다 없으면(레거시) 전송
     if (userId && sub.userId && sub.userId !== userId) continue;
     const pushSub = { endpoint: sub.endpoint, keys: sub.keys };
     webpush.sendNotification(pushSub, text).catch((err) => {
-      if (err.statusCode === 410 || err.statusCode === 404) {
-        subscriptions.delete(clientId);
-      }
+      if (err.statusCode === 410 || err.statusCode === 404) subscriptions.delete(clientId);
     });
   }
 }
@@ -268,158 +492,76 @@ function checkSchedules() {
 
   for (const [id, s] of serverSchedules) {
     if (!s.enabled) continue;
-
-    // ── 예방접종: D-7, D-1, D-day 오전 9시 알림 ──────────────────────────────
     if (s.type === "vaccine") {
       if (!s.vaccineDate || hhmm !== "09:00") continue;
       const fireKey = `${id}_${todayStr}`;
       if (firedThisMinute.get(id) === fireKey) continue;
-
-      const target = new Date(s.vaccineDate);
-      target.setHours(0, 0, 0, 0);
+      const target = new Date(s.vaccineDate); target.setHours(0, 0, 0, 0);
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const diff = Math.round((target - today) / 86400000);
-
       if (diff === 7 || diff === 1 || diff === 0) {
         firedThisMinute.set(id, fireKey);
         const label = diff === 0 ? "오늘이에요!" : `D-${diff}이에요!`;
-        sendPushToUser(s._userId, {
-          title: `💉 예방접종 알림`,
-          body: s.dogName ? `${s.dogName}의 ${s.title} ${label}` : `${s.title} ${label}`,
-        });
-        console.log(`🔔 예방접종 알림: ${s.title} D-${diff}`);
+        sendPushToUser(s._userId, { title: "예방접종 알림", body: s.dogName ? `${s.dogName}의 ${s.title} ${label}` : `${s.title} ${label}` });
       }
       continue;
     }
-
-    // ── 일반 스케줄 ────────────────────────────────────────────────────────────
     if (s.time !== hhmm) continue;
     if (firedThisMinute.get(id) === hhmm) continue;
-
     const created = new Date(s.createdAt);
     let shouldFire = false;
     if (s.repeat === "daily") shouldFire = true;
     else if (s.repeat === "weekly") shouldFire = now.getDay() === created.getDay();
     else if (s.repeat === "monthly") shouldFire = now.getDate() === created.getDate();
-    else if (s.repeat === "none") {
-      if (!firedOnce.has(id)) { shouldFire = true; firedOnce.add(id); }
-    }
-
+    else if (s.repeat === "none") { if (!firedOnce.has(id)) { shouldFire = true; firedOnce.add(id); } }
     if (!shouldFire) continue;
-
     firedThisMinute.set(id, hhmm);
-    sendPushToUser(s._userId, {
-      title: `🐾 ${s.title}`,
-      body: s.dogName ? `${s.dogName}의 ${s.title} 시간이에요!` : `${s.title} 시간이에요!`,
-    });
-    console.log(`🔔 알림 발송: ${s.title} @ ${hhmm}`);
+    sendPushToUser(s._userId, { title: s.title, body: s.dogName ? `${s.dogName}의 ${s.title} 시간이에요!` : `${s.title} 시간이에요!` });
   }
 }
 
-// 다음 정각(분)에 맞춰 시작 후 1분마다 반복
-const now = new Date();
-const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-setTimeout(() => {
-  checkSchedules();
-  setInterval(checkSchedules, 60_000);
-}, msUntilNextMinute);
+const nowMs = new Date();
+setTimeout(() => { checkSchedules(); setInterval(checkSchedules, 60_000); }, (60 - nowMs.getSeconds()) * 1000 - nowMs.getMilliseconds());
 
 // ── AI 분석 API ────────────────────────────────────────────────────────────────
 app.post("/api/analyze", async (req, res) => {
   const { dog, symptoms } = req.body;
-
-  if (!symptoms?.trim()) {
-    return res.status(400).json({ error: "증상을 입력해주세요." });
-  }
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: "ANTHROPIC_API_KEY가 설정되지 않았습니다. .env.local 파일을 확인해주세요." });
-  }
-
+  if (!symptoms?.trim()) return res.status(400).json({ error: "증상을 입력해주세요." });
   try {
-    const dogInfo = dog
-      ? `강아지 정보:\n- 이름: ${dog.name}\n- 견종: ${dog.breed}\n- 나이: ${dog.age}살\n- 체중: ${dog.weight}kg\n- 성별: ${dog.gender === "male" ? "수컷" : "암컷"}\n- 중성화: ${dog.neutered ? "완료" : "미완료"}\n\n`
-      : "";
-
+    const dogInfo = dog ? `강아지 정보:\n- 이름: ${dog.name}\n- 견종: ${dog.breed}\n- 나이: ${dog.age}살\n- 체중: ${dog.weight}kg\n- 성별: ${dog.gender === "male" ? "수컷" : "암컷"}\n- 중성화: ${dog.neutered ? "완료" : "미완료"}\n\n` : "";
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 600,
-      system: `당신은 경험 많은 반려견 전문 수의사 AI입니다.
-보호자가 입력한 증상과 강아지 정보를 바탕으로 응급도를 정확히 판단해주세요.
-
-판단 시 반드시 고려할 사항:
-- 견종별 유전적 취약점 (말티즈·포메라니안→심장, 닥스훈트·코기→디스크, 불독→호흡기 등)
-- 나이 (어린 강아지→파보·홍역 취약, 노령견→심장·신장·종양 위험)
-- 성별·중성화 여부 (중성화 안 한 암컷→자궁축농증, 유선종양)
-- 증상 지속 시간과 진행 속도 (갑작스러운 증상일수록 응급 가능성 높음)
-- 복합 증상 시 가장 위험한 가능성을 우선 판단
-- 생명을 위협하는 징후 우선: 호흡곤란, 기절, 혈변+구토 동반, 복부 팽만, 마비, 경련`,
-      messages: [
-        {
-          role: "user",
-          content: `${dogInfo}증상: ${symptoms}
-
-다음 JSON 형식으로만 응답해주세요 (추가 설명 없이):
-{
-  "urgency": "home" 또는 "tomorrow" 또는 "now",
-  "summary": "증상 요약 및 의심 질환 (1-2문장)",
-  "advice": "구체적인 케어 방법 또는 주의사항",
-  "nextSteps": ["단계1", "단계2", "단계3"]
-}
-
-urgency 기준:
-- "home": 집에서 케어 가능, 안정적인 상태
-- "tomorrow": 24시간 내 병원 방문 필요
-- "now": 즉시 응급 동물병원 방문 필요`,
-        },
-      ],
+      system: `당신은 경험 많은 반려견 전문 수의사 AI입니다. 보호자가 입력한 증상과 강아지 정보를 바탕으로 응급도를 정확히 판단해주세요.`,
+      messages: [{ role: "user", content: `${dogInfo}증상: ${symptoms}\n\n다음 JSON 형식으로만 응답해주세요:\n{\n  "urgency": "home" 또는 "tomorrow" 또는 "now",\n  "summary": "증상 요약 및 의심 질환 (1-2문장)",\n  "advice": "구체적인 케어 방법 또는 주의사항",\n  "nextSteps": ["단계1", "단계2", "단계3"]\n}` }],
     });
-
-    const text = message.content[0].text;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("AI 응답 파싱 실패");
-
-    const result = JSON.parse(jsonMatch[0]);
-    res.json(result);
+    res.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    console.error("API error:", err);
-    res.status(500).json({ error: err.message || "분석 중 오류가 발생했습니다." });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// 오디오 분류 → 번역 (Hugging Face + Claude)
 async function callHfAudio(audioBuffer, mimeType) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const hfRes = await fetch(
-        "https://api-inference.huggingface.co/models/MIT/ast-finetuned-audioset-10-10-0.4593",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.HF_TOKEN}`,
-            "Content-Type": mimeType || "audio/webm",
-          },
-          body: audioBuffer,
-        }
-      );
-
+      const hfRes = await fetch("https://api-inference.huggingface.co/models/MIT/ast-finetuned-audioset-10-10-0.4593", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.HF_TOKEN}`, "Content-Type": mimeType || "audio/webm" },
+        body: audioBuffer,
+      });
       const data = await hfRes.json();
       if (!data.error) return data;
-
       const msg = data.error.toLowerCase();
       if (msg.includes("loading")) {
         const wait = data.estimated_time ? Math.min(data.estimated_time * 1000, 20000) : 8000;
         await new Promise((r) => setTimeout(r, wait));
         continue;
       }
-      if (msg.includes("terminated") && attempt < 3) {
-        await new Promise((r) => setTimeout(r, 3000));
-        continue;
-      }
+      if (msg.includes("terminated") && attempt < 3) { await new Promise((r) => setTimeout(r, 3000)); continue; }
       return null;
-    } catch {
-      if (attempt < 3) await new Promise((r) => setTimeout(r, 2000));
-    }
+    } catch { if (attempt < 3) await new Promise((r) => setTimeout(r, 2000)); }
   }
   return null;
 }
@@ -427,205 +569,82 @@ async function callHfAudio(audioBuffer, mimeType) {
 app.post("/api/classify-audio", async (req, res) => {
   const { audioBase64, mimeType, dog, context } = req.body;
   if (!audioBase64) return res.status(400).json({ error: "오디오가 없습니다." });
-
   const dogInfo = dog ? `이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살` : "강아지 정보 없음";
-
   try {
     const audioBuffer = Buffer.from(audioBase64, "base64");
     const hfData = await callHfAudio(audioBuffer, mimeType);
-
-    const topLabels = Array.isArray(hfData)
-      ? hfData.slice(0, 5).map((r) => `${r.label} (${(r.score * 100).toFixed(0)}%)`).join(", ")
-      : "알 수 없음 (오디오 분석 불가, 상황과 견종 기반으로 추측)";
-
+    const topLabels = Array.isArray(hfData) ? hfData.slice(0, 5).map((r) => `${r.label} (${(r.score * 100).toFixed(0)}%)`).join(", ") : "알 수 없음";
     const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 400,
-      system: `당신은 강아지 언어를 유쾌하고 재치있게 번역해주는 AI입니다.
-오디오 분석 결과와 상황을 바탕으로 강아지가 무슨 말을 하는지 1인칭으로 번역해주세요.
-어디까지나 재미를 위한 것임을 잊지 마세요.`,
-      messages: [{
-        role: "user",
-        content: `강아지 정보: ${dogInfo}
-오디오 분석 결과: ${topLabels}
-상황: ${context || "알 수 없음"}
-
-다음 JSON 형식으로만 응답해주세요:
-{
-  "translation": "강아지가 하는 말 (1인칭, 2-3문장, 귀엽고 재치있게)",
-  "mood": "현재 기분 한 단어",
-  "moodEmoji": "기분을 표현하는 이모지 1개",
-  "detectedSound": "감지된 소리 한국어로 (예: 짖음, 낑낑거림, 하울링)",
-  "confidence": "번역 신뢰도 0-100 사이 숫자 (최대 65, 재미용)"
-}`,
-      }],
+      model: "claude-haiku-4-5-20251001", max_tokens: 400,
+      system: "당신은 강아지 언어를 유쾌하고 재치있게 번역해주는 AI입니다.",
+      messages: [{ role: "user", content: `강아지 정보: ${dogInfo}\n오디오 분석 결과: ${topLabels}\n상황: ${context || "알 수 없음"}\n\n다음 JSON 형식으로만 응답해주세요:\n{\n  "translation": "강아지가 하는 말 (1인칭, 2-3문장)",\n  "mood": "현재 기분 한 단어",\n  "moodEmoji": "기분을 표현하는 이모지 1개",\n  "detectedSound": "감지된 소리 한국어로",\n  "confidence": "번역 신뢰도 0-65 숫자"\n}` }],
     });
-
     const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("파싱 실패");
     const result = JSON.parse(jsonMatch[0]);
     result.rawLabels = topLabels;
     res.json(result);
-  } catch (err) {
-    console.error("classify-audio error:", err);
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post("/api/translate", async (req, res) => {
   const { dog, barkType, context } = req.body;
   if (!barkType || !context) return res.status(400).json({ error: "짖음 유형과 상황을 선택해주세요." });
-
   const dogInfo = dog ? `이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살` : "강아지 정보 없음";
-
   try {
     const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 400,
-      system: `당신은 강아지 언어를 유쾌하고 재치있게 번역해주는 AI입니다.
-강아지의 성격과 견종 특성을 반영해서 1인칭으로 번역해주세요.
-어디까지나 재미를 위한 것임을 잊지 마세요.`,
-      messages: [{
-        role: "user",
-        content: `강아지 정보: ${dogInfo}
-짖음 유형: ${barkType}
-상황: ${context}
-
-다음 JSON 형식으로만 응답해주세요:
-{
-  "translation": "강아지가 하는 말 (1인칭, 2-3문장, 귀엽고 재치있게)",
-  "mood": "현재 기분 한 단어",
-  "moodEmoji": "기분을 표현하는 이모지 1개",
-  "confidence": "번역 신뢰도 0-100 사이 숫자 (항상 낮게, 재미용이므로 최대 60)"
-}`,
-      }],
+      model: "claude-haiku-4-5-20251001", max_tokens: 400,
+      system: "당신은 강아지 언어를 유쾌하고 재치있게 번역해주는 AI입니다.",
+      messages: [{ role: "user", content: `강아지 정보: ${dogInfo}\n짖음 유형: ${barkType}\n상황: ${context}\n\n다음 JSON 형식으로만 응답해주세요:\n{\n  "translation": "강아지가 하는 말 (1인칭, 2-3문장)",\n  "mood": "현재 기분 한 단어",\n  "moodEmoji": "기분을 표현하는 이모지 1개",\n  "confidence": "번역 신뢰도 0-60 숫자"\n}` }],
     });
     const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("파싱 실패");
     res.json(JSON.parse(jsonMatch[0]));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post("/api/analyze-product", async (req, res) => {
   const { dog, imageBase64, mediaType } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "이미지를 업로드해주세요." });
-
-  const dogInfo = dog
-    ? `강아지: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살, 체중: ${dog.weight}kg`
-    : "";
-
+  const dogInfo = dog ? `강아지: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살, 체중: ${dog.weight}kg` : "";
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 800,
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 },
-          },
-          {
-            type: "text",
-            text: `이 반려견 용품/제품 사진을 분석해주세요.${dogInfo ? `\n보호자 강아지 정보: ${dogInfo}` : ""}
-
-제품이 사료나 간식인 경우, 강아지 체중에 맞는 1일 급여량(g)과 급여 횟수를 반드시 포함해주세요.
-체중 정보가 없으면 체중 구간별(소형 ~5kg / 중형 5~15kg / 대형 15kg+) 가이드를 제공하세요.
-
-다음 JSON 형식으로만 응답해주세요:
-{
-  "productName": "제품명 또는 종류",
-  "category": "카테고리 (사료/간식/장난감/의약품/용품 중 하나)",
-  "description": "제품 설명 (2-3문장)",
-  "mainIngredients": ["주요 성분 또는 재료 (사료/간식인 경우)"],
-  "feedingGuide": "이 강아지에게 맞는 1일 급여량과 횟수 (예: '1일 120g, 2회 나눠 급여'). 사료/간식이 아니면 빈 문자열",
-  "suitableAge": "적합한 나이대",
-  "cautions": ["주의사항1", "주의사항2"],
-  "rating": "이 강아지에게 추천 여부 (추천/보통/주의 중 하나)",
-  "ratingReason": "추천 여부 이유 (1문장)"
-}`,
-          },
-        ],
-      }],
+      model: "claude-sonnet-4-6", max_tokens: 800,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 } },
+        { type: "text", text: `사진을 분석해주세요.${dogInfo ? `\n보호자 강아지 정보: ${dogInfo}` : ""}\n\n먼저 사진이 "사람이 먹는 음식/식재료"인지, "반려견 용품/제품"인지 판단하세요.\n\n【사람 음식/식재료인 경우】\n{\n  "contentType": "food",\n  "foodName": "음식/식재료 이름",\n  "safety": "safe" 또는 "caution" 또는 "danger",\n  "safetyLabel": "안전해요" 또는 "주의 필요" 또는 "위험해요",\n  "reason": "왜 안전한지/위험한지 핵심 이유 (1-2문장)",\n  "symptoms": ["위험/주의 시 증상들"],\n  "tip": "보호자에게 전달할 팁 한 줄"\n}\n\n【반려견 용품/제품인 경우】\n{\n  "contentType": "product",\n  "productName": "제품명",\n  "category": "사료/간식/장난감/의약품/용품 중 하나",\n  "description": "제품 설명 (2-3문장)",\n  "mainIngredients": ["주요 성분"],\n  "feedingGuide": "1일 급여량과 횟수 (사료/간식이 아니면 빈 문자열)",\n  "suitableAge": "적합한 나이대",\n  "cautions": ["주의사항"],\n  "rating": "추천/보통/주의 중 하나",\n  "ratingReason": "추천 여부 이유 (1문장)"\n}` },
+      ]}],
     });
     const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("파싱 실패");
     res.json(JSON.parse(jsonMatch[0]));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── 영수증/진단서 OCR 분석 API ─────────────────────────────────────────────
 app.post("/api/parse-receipt", async (req, res) => {
   const { imageBase64, mediaType, dog } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "이미지를 업로드해주세요." });
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: "ANTHROPIC_API_KEY가 설정되지 않았습니다." });
-  }
-
-  const dogInfo = dog
-    ? `\n보호자 강아지 정보: 이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살, 체중: ${dog.weight}kg`
-    : "";
-
+  const dogInfo = dog ? `\n보호자 강아지 정보: 이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살, 체중: ${dog.weight}kg` : "";
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 },
-          },
-          {
-            type: "text",
-            text: `이 동물병원 영수증/진료확인서/진단서 사진을 분석해서 진료 내역을 추출해주세요.${dogInfo}
-
-사진이 영수증이 아니거나 동물병원과 관련 없는 경우에도 최대한 관련 정보를 추출해주세요.
-읽기 어려운 부분은 "판독 불가"로 표시하세요.
-
-다음 JSON 형식으로만 응답해주세요:
-{
-  "hospitalName": "병원 이름 (읽을 수 없으면 빈 문자열)",
-  "visitDate": "방문 날짜 YYYY-MM-DD 형식 (읽을 수 없으면 빈 문자열)",
-  "items": [
-    { "name": "진료 항목명", "price": 금액(숫자, 없으면 0) }
-  ],
-  "totalPrice": 총 금액(숫자, 없으면 0),
-  "diagnosis": "진단명 또는 주요 소견 (없으면 빈 문자열)",
-  "prescriptions": ["처방 약품명1", "처방 약품명2"],
-  "nextVisitDate": "다음 내원일 YYYY-MM-DD (없으면 빈 문자열)",
-  "notes": "기타 특이사항 (없으면 빈 문자열)",
-  "confidence": "인식 신뢰도 high/medium/low"
-}`,
-          },
-        ],
-      }],
+      model: "claude-sonnet-4-6", max_tokens: 1000,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 } },
+        { type: "text", text: `이 동물병원 영수증/진료확인서/진단서 사진을 분석해서 진료 내역을 추출해주세요.${dogInfo}\n\n다음 JSON 형식으로만 응답해주세요:\n{\n  "hospitalName": "병원 이름",\n  "visitDate": "방문 날짜 YYYY-MM-DD",\n  "items": [{ "name": "진료 항목명", "price": 금액 }],\n  "totalPrice": 총금액,\n  "diagnosis": "진단명",\n  "prescriptions": ["처방 약품명"],\n  "nextVisitDate": "다음 내원일 YYYY-MM-DD",\n  "notes": "기타 특이사항",\n  "confidence": "high/medium/low"\n}` },
+      ]}],
     });
     const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("파싱 실패");
     res.json(JSON.parse(jsonMatch[0]));
-  } catch (err) {
-    console.error("parse-receipt error:", err);
-    res.status(500).json({ error: err.message || "영수증 분석 중 오류가 발생했습니다." });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── 프론트엔드 정적 파일 서빙 (프로덕션) ────────────────────────────────────
+// ── 정적 파일 서빙 ────────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, "dist/public");
 if (existsSync(distDir)) {
   app.use(express.static(distDir));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(distDir, "index.html"));
-  });
+  app.get("*", (req, res) => { res.sendFile(path.join(distDir, "index.html")); });
 }
 
-const PORT = process.env.PORT ?? process.env.API_PORT ?? 3099;
-app.listen(PORT, () => {
-  console.log(`서버 실행 중: http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT ?? 3099;
+app.listen(PORT, () => { console.log(`서버 실행 중: http://localhost:${PORT}`); });

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { UseFormReturn } from "react-hook-form";
 import { Camera } from "lucide-react";
 import {
@@ -22,6 +22,15 @@ interface DogFormFieldsProps {
 export function DogFormFields({ form, photoPreview, onPhotoChange }: DogFormFieldsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const birthday = form.watch("birthday");
+  useEffect(() => {
+    if (!birthday) return;
+    const birthDate = new Date(birthday + "T00:00:00");
+    if (isNaN(birthDate.getTime())) return;
+    const ageYears = Math.floor((Date.now() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    if (ageYears >= 0) form.setValue("age", ageYears, { shouldValidate: false });
+  }, [birthday]);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,6 +90,23 @@ export function DogFormFields({ form, photoPreview, onPhotoChange }: DogFormFiel
             <FormControl>
               <Input placeholder="푸들" {...field} className="bg-secondary/50 border-transparent focus-visible:bg-background focus-visible:ring-primary/20 focus-visible:border-primary h-12 rounded-xl text-lg" />
             </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+
+        <FormField control={form.control} name="birthday" render={({ field }) => (
+          <FormItem className="col-span-2">
+            <FormLabel className="font-semibold text-foreground/80">생일 <span className="text-muted-foreground font-normal">(선택)</span></FormLabel>
+            <FormControl>
+              <Input
+                type="date"
+                {...field}
+                value={field.value ?? ""}
+                max={new Date().toISOString().slice(0, 10)}
+                className="bg-secondary/50 border-transparent focus-visible:bg-background focus-visible:ring-primary/20 focus-visible:border-primary h-12 rounded-xl text-base"
+              />
+            </FormControl>
+            <p className="text-[11px] text-muted-foreground">입력하면 나이가 자동으로 계산돼요</p>
             <FormMessage />
           </FormItem>
         )} />

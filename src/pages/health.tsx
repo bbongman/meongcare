@@ -4,14 +4,18 @@ import { ConsultationTab } from "@/components/health/ConsultationTab";
 import { HistoryTab } from "@/components/health/HistoryTab";
 import { StatsTab } from "@/components/health/StatsTab";
 import { VetVisitTab } from "@/components/health/VetVisitTab";
+import { VaccineTab } from "@/components/health/VaccineTab";
+import { PreventionTab } from "@/components/health/PreventionTab";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Tab = "consultation" | "vet-visit" | "stats" | "history";
+type Tab = "consultation" | "vet-visit" | "vaccine" | "prevention" | "stats" | "history";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "consultation", label: "AI 문진", emoji: "🩺" },
   { id: "vet-visit", label: "검진 기록", emoji: "🏥" },
+  { id: "vaccine", label: "예방접종", emoji: "💉" },
+  { id: "prevention", label: "예방약", emoji: "💊" },
   { id: "stats", label: "통계", emoji: "📊" },
   { id: "history", label: "히스토리", emoji: "📋" },
 ];
@@ -53,6 +57,8 @@ export default function Health() {
           <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.15 }}>
             {activeTab === "consultation" && <ConsultationTab />}
             {activeTab === "vet-visit" && <VetVisitTab />}
+            {activeTab === "vaccine" && <VaccineTab />}
+            {activeTab === "prevention" && <PreventionTab />}
             {activeTab === "stats" && <StatsTab />}
             {activeTab === "history" && <HistoryTab />}
           </motion.div>

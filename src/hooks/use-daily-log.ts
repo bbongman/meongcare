@@ -1,62 +1,64 @@
-import { useState, useCallback } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { userKey } from "@/lib/user-storage";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
+import { apiFetch } from "@/lib/api";
 
 export interface DailyLog {
   id: string;
   dogId: string;
   date: string; // YYYY-MM-DD
-  meal: 0 | 1 | 2 | 3;       // 0=안먹음 1=조금 2=보통 3=잘먹음
+  meal: 0 | 1 | 2 | 3;
   walk: boolean;
   poop: boolean;
   pee: boolean;
-  energy: 0 | 1 | 2;          // 0=축처짐 1=보통 2=활발
+  energy: 0 | 1 | 2;
   memo: string;
 }
 
-const BASE_KEY = "meongcare_daily_logs";
-
-function load(): DailyLog[] {
-  try {
-    const data = localStorage.getItem(userKey(BASE_KEY));
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-function save(logs: DailyLog[]) {
-  try {
-    localStorage.setItem(userKey(BASE_KEY), JSON.stringify(logs));
-  } catch (e) {
-    console.error("Failed to save daily logs", e);
-  }
-}
-
 export function useDailyLog(dogId: string) {
-  const [logs, setLogs] = useState<DailyLog[]>(load);
+  const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
-  const todayLog = logs.find((l) => l.dogId === dogId && l.date === today) ?? null;
 
-  const saveLog = useCallback((data: Omit<DailyLog, "id" | "dogId" | "date">) => {
-    setLogs((prev) => {
-      const existing = prev.find((l) => l.dogId === dogId && l.date === today);
-      const next = existing
-        ? prev.map((l) => l.id === existing.id ? { ...l, ...data } : l)
-        : [{ id: uuidv4(), dogId, date: today, ...data }, ...prev].slice(0, 365);
-      save(next);
-      return next;
-    });
-  }, [dogId, today]);
+  const { data: logs = [] } = useQuery<DailyLog[]>({
+    queryKey: ["daily-logs", dogId],
+    queryFn: () => apiFetch<DailyLog[]>(`/api/daily-logs/${dogId}`),
+    enabled: !!dogId,
+  });
 
-  const recentLogs = (days: number) => {
+  const todayLog = logs.find((l) => l.date === today) ?? null;
+
+  const saveLogMutation = useMutation({
+    mutationFn: (data: Omit<DailyLog, "id" | "dogId" | "date"> & { date?: string }) =>
+      apiFetch<DailyLog>("/api/daily-logs", {
+        method: "POST",
+        body: JSON.stringify({ ...data, dogId, date: data.date ?? today }),
+      }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["daily-logs", dogId] }); },
+  });
+
+  const saveLog = useCallback(
+    (data: Omit<DailyLog, "id" | "dogId" | "date">) => saveLogMutation.mutateAsync(data),
+    [saveLogMutation]
+  );
+
+  const saveLogForDate = useCallback(
+    (date: string, data: Omit<DailyLog, "id" | "dogId" | "date">) =>
+      saveLogMutation.mutateAsync({ ...data, date }),
+    [saveLogMutation]
+  );
+
+  const recentLogs = useCallback((days: number) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days + 1);
-    cutoff.setHours(0, 0, 0, 0);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
     return logs
-      .filter((l) => l.dogId === dogId && new Date(l.date) >= cutoff)
+      .filter((l) => l.date >= cutoffStr)
       .sort((a, b) => a.date.localeCompare(b.date));
-  };
+  }, [logs]);
 
-  return { todayLog, saveLog, recentLogs };
+  const allLogs = useMemo(
+    () => [...logs].sort((a, b) => b.date.localeCompare(a.date)),
+    [logs]
+  );
+
+  return { todayLog, saveLog, saveLogForDate, recentLogs, allLogs };
 }

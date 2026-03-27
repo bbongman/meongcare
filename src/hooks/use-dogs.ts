@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
-import { userKey } from "@/lib/user-storage";
+import { apiFetch } from "@/lib/api";
 
 // --- Schema & Types ---
 export const dogSchema = z.object({
@@ -11,7 +10,8 @@ export const dogSchema = z.object({
   gender: z.enum(["male", "female"]),
   weight: z.coerce.number().min(0).optional().default(0),
   neutered: z.boolean(),
-  photo: z.string().nullable().optional(), // base64 string
+  photo: z.string().nullable().optional(),
+  birthday: z.string().optional(),
 });
 
 export type DogInput = z.infer<typeof dogSchema>;
@@ -21,101 +21,46 @@ export interface Dog extends DogInput {
   createdAt: string;
 }
 
-const BASE_KEY = "meongcare_dogs";
-
-// --- Helpers ---
-const getDogsFromStorage = (): Dog[] => {
-  const data = localStorage.getItem(userKey(BASE_KEY));
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    console.error("Failed to parse dogs from local storage", e);
-    return [];
-  }
-};
-
-const saveDogsToStorage = (dogs: Dog[]) => {
-  try {
-    localStorage.setItem(userKey(BASE_KEY), JSON.stringify(dogs));
-  } catch (e) {
-    console.error("Failed to save dogs to local storage", e);
-  }
-};
-
 // --- Hooks ---
 
 export function useDogs() {
-  return useQuery({
+  return useQuery<Dog[]>({
     queryKey: ["dogs"],
-    queryFn: () => getDogsFromStorage(),
+    queryFn: () => apiFetch<Dog[]>("/api/dogs"),
   });
 }
 
 export function useDog(id: string) {
-  return useQuery({
+  return useQuery<Dog | null>({
     queryKey: ["dogs", id],
-    queryFn: () => {
-      const dogs = getDogsFromStorage();
-      return dogs.find((d) => d.id === id) || null;
+    queryFn: async () => {
+      const dogs = await apiFetch<Dog[]>("/api/dogs");
+      return dogs.find((d) => d.id === id) ?? null;
     },
   });
 }
 
 export function useAddDog() {
   const queryClient = useQueryClient();
-  
   return useMutation({
-    mutationFn: async (data: DogInput) => {
-      const newDog: Dog = {
-        ...data,
-        id: uuidv4(),
-        createdAt: new Date().toISOString(),
-      };
-      
-      const currentDogs = getDogsFromStorage();
-      const updatedDogs = [newDog, ...currentDogs];
-      saveDogsToStorage(updatedDogs);
-      
-      return newDog;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dogs"] });
-    },
+    mutationFn: (data: DogInput) => apiFetch<Dog>("/api/dogs", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["dogs"] }); },
   });
 }
 
 export function useUpdateDog() {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: DogInput }) => {
-      const currentDogs = getDogsFromStorage();
-      const updatedDogs = currentDogs.map((d) =>
-        d.id === id ? { ...d, ...data } : d
-      );
-      saveDogsToStorage(updatedDogs);
-      return updatedDogs.find((d) => d.id === id)!;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dogs"] });
-    },
+    mutationFn: ({ id, data }: { id: string; data: DogInput }) =>
+      apiFetch<Dog>(`/api/dogs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["dogs"] }); },
   });
 }
 
 export function useDeleteDog() {
   const queryClient = useQueryClient();
-  
   return useMutation({
-    mutationFn: async (id: string) => {
-      const currentDogs = getDogsFromStorage();
-      const updatedDogs = currentDogs.filter((d) => d.id !== id);
-      saveDogsToStorage(updatedDogs);
-      
-      return id;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dogs"] });
-    },
+    mutationFn: (id: string) => apiFetch(`/api/dogs/${id}`, { method: "DELETE" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["dogs"] }); },
   });
 }

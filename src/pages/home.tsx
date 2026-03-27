@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check, Stethoscope, ChevronRight } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check, Stethoscope, ChevronRight, Download } from "lucide-react";
+import { userKey } from "@/lib/user-storage";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
 import { useAuth } from "@/hooks/use-auth";
@@ -10,6 +11,8 @@ import { DailyCheckDialog } from "@/components/daily-check-dialog";
 import { useDailyLog } from "@/hooks/use-daily-log";
 import { useSchedules, useAddSchedule, syncSchedulesToServer } from "@/hooks/use-schedules";
 import { useVetVisits } from "@/hooks/use-vet-visits";
+import { useAllUpcomingVaccines } from "@/hooks/use-vaccines";
+import { differenceInDays } from "date-fns";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -62,8 +65,35 @@ function TodayCheckButton({ dogId, onClick }: { dogId: string; onClick: () => vo
   );
 }
 
+function getDisplayAge(dog: Dog): number {
+  if (dog.birthday) {
+    const birthDate = new Date(dog.birthday + "T00:00:00");
+    if (!isNaN(birthDate.getTime())) {
+      return Math.floor((Date.now() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    }
+  }
+  return dog.age;
+}
+
+function getBirthdayDiff(birthday: string): number | null {
+  const parts = birthday.split("-");
+  if (parts.length < 3) return null;
+  const [, month, day] = parts;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const thisYear = today.getFullYear();
+  let bday = new Date(`${thisYear}-${month}-${day}T00:00:00`);
+  let diff = Math.round((bday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) {
+    bday = new Date(`${thisYear + 1}-${month}-${day}T00:00:00`);
+    diff = Math.round((bday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }
+  return diff;
+}
+
 function getHealthTip(dog: Dog): { emoji: string; title: string; body: string } {
-  const { age, breed, weight } = dog;
+  const { breed, weight } = dog;
+  const age = getDisplayAge(dog);
   const w = weight || 0;
 
   // 몸무게 기반 보조 팁
@@ -163,6 +193,50 @@ function RecentVetVisitWidget() {
   );
 }
 
+function toHumanAge(dogAge: number, weight?: number): number {
+  const w = weight ?? 0;
+  const extra = w >= 25 ? 7 : w >= 10 ? 5 : 4;
+  if (dogAge <= 0) return 0;
+  if (dogAge === 1) return 15;
+  if (dogAge === 2) return 24;
+  return 24 + (dogAge - 2) * extra;
+}
+
+function UpcomingVaccineWidget() {
+  const upcoming = useAllUpcomingVaccines();
+  const [, setLocation] = useLocation();
+  if (upcoming.length === 0) return null;
+  const next = upcoming[0];
+  const diff = differenceInDays(new Date(next.nextDate), new Date());
+  const urgent = diff <= 7;
+  return (
+    <div className={cn(
+      "border rounded-3xl p-4 flex items-center gap-3",
+      urgent ? "bg-red-50 border-red-100" : "bg-purple-50 border-purple-100"
+    )}>
+      <div className={cn("w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-sm text-xl shrink-0")}>
+        💉
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={cn("text-xs font-bold", urgent ? "text-red-600" : "text-purple-700")}>
+          {urgent ? "예방접종 임박!" : "예방접종 예정"}
+        </p>
+        <p className="text-sm font-semibold text-foreground truncate">{next.vaccineName}</p>
+        <p className="text-xs text-muted-foreground">
+          {format(new Date(next.nextDate), "M월 d일 (EEE)", { locale: ko })}
+          {diff === 0 ? " — 오늘!" : diff > 0 ? ` — D-${diff}` : ` — D+${Math.abs(diff)}`}
+        </p>
+      </div>
+      <button
+        onClick={() => setLocation("/health")}
+        className={cn("text-[11px] font-semibold shrink-0", urgent ? "text-red-500" : "text-purple-500")}
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 function DailyReminderBanner() {
   const { data: schedules = [] } = useSchedules();
   const addSchedule = useAddSchedule();
@@ -211,6 +285,32 @@ function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
       setTimeout(() => { setSaved(false); onOpenChange(false); }, 1000);
     } catch { }
     setSaving(false);
+  }
+
+  function handleExport() {
+    const baseKeys = [
+      "meongcare_dogs",
+      "meongcare_daily_logs",
+      "meongcare_schedules",
+      "meongcare_vet_visits",
+      "meongcare_weight_history",
+    ];
+    const data: Record<string, unknown> = { exportedAt: new Date().toISOString() };
+    baseKeys.forEach((base) => {
+      const val = localStorage.getItem(userKey(base));
+      if (val) {
+        try { data[base] = JSON.parse(val); } catch { data[base] = val; }
+      }
+    });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `멍케어_백업_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -272,6 +372,13 @@ function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
           className="w-full h-11 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
         >
           {saved ? <><Check className="w-4 h-4" /> 저장 완료</> : saving ? "저장 중..." : "저장하기"}
+        </button>
+
+        <button
+          onClick={handleExport}
+          className="w-full h-10 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2"
+        >
+          <Download className="w-4 h-4" /> 데이터 내보내기 (JSON 백업)
         </button>
       </DialogContent>
     </Dialog>
@@ -404,10 +511,29 @@ export default function Home() {
                       </button>
                     </div>
 
+                    {dog.birthday && (() => {
+                      const diff = getBirthdayDiff(dog.birthday);
+                      if (diff === null) return null;
+                      if (diff === 0) return (
+                        <div className="relative z-10 bg-pink-50 border border-pink-200 rounded-2xl px-3 py-2 flex items-center gap-2 mb-1">
+                          <span className="text-base">🎂</span>
+                          <span className="text-xs font-bold text-pink-600">오늘 {dog.name} 생일이에요!</span>
+                        </div>
+                      );
+                      if (diff <= 7) return (
+                        <div className="relative z-10 bg-pink-50/60 border border-pink-100 rounded-2xl px-3 py-2 flex items-center gap-2 mb-1">
+                          <span className="text-sm">🎂</span>
+                          <span className="text-xs font-semibold text-pink-500">생일 D-{diff}</span>
+                        </div>
+                      );
+                      return null;
+                    })()}
+
                     <div className="grid grid-cols-2 gap-3 relative z-10">
                       <div className="bg-secondary/50 rounded-2xl p-3">
                         <p className="text-[11px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">나이</p>
-                        <p className="font-bold text-foreground text-lg">{dog.age}<span className="text-sm font-medium text-muted-foreground ml-0.5">살</span></p>
+                        <p className="font-bold text-foreground text-lg">{getDisplayAge(dog)}<span className="text-sm font-medium text-muted-foreground ml-0.5">살</span></p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">사람 나이로 약 {toHumanAge(getDisplayAge(dog), dog.weight)}살</p>
                       </div>
                       <div className="bg-secondary/50 rounded-2xl p-3">
                         <p className="text-[11px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">몸무게</p>
@@ -426,6 +552,9 @@ export default function Home() {
 
             {/* 매일 건강 체크 리마인더 */}
             <DailyReminderBanner />
+
+            {/* 예방접종 예정 알림 */}
+            <UpcomingVaccineWidget />
 
             {/* 최근 검진 기록 */}
             <RecentVetVisitWidget />

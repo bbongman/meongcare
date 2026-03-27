@@ -146,6 +146,14 @@ export function VetVisitTab() {
   const [parsed, setParsed] = useState<ParsedReceipt | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    hospitalName: "",
+    visitDate: new Date().toISOString().slice(0, 10),
+    diagnosis: "",
+    totalPrice: "",
+    notes: "",
+  });
 
   const selectedDog = dogs?.find((d) => d.id === selectedDogId) ?? dogs?.[0] ?? null;
 
@@ -167,8 +175,26 @@ export function VetVisitTab() {
     setParsed(null);
     setError("");
     setSaved(false);
+    setManualMode(false);
+    setManualForm({ hospitalName: "", visitDate: new Date().toISOString().slice(0, 10), diagnosis: "", totalPrice: "", notes: "" });
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
+  }
+
+  function handleManualSave() {
+    addVisit({
+      dogName: selectedDog?.name ?? "강아지",
+      hospitalName: manualForm.hospitalName,
+      visitDate: manualForm.visitDate,
+      items: [],
+      totalPrice: parseFloat(manualForm.totalPrice) || 0,
+      diagnosis: manualForm.diagnosis,
+      prescriptions: [],
+      nextVisitDate: "",
+      notes: manualForm.notes,
+    });
+    setSaved(true);
+    setTimeout(() => handleReset(), 1500);
   }
 
   async function handleParse() {
@@ -176,11 +202,12 @@ export function VetVisitTab() {
     setLoading(true);
     setError("");
     try {
-      const arrayBuffer = await selectedFile.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      let binary = "";
-      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-      const imageBase64 = btoa(binary);
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile!);
+      });
 
       const res = await fetch("/api/parse-receipt", {
         method: "POST",
@@ -227,7 +254,7 @@ export function VetVisitTab() {
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
 
-      {!previewUrl && !saved ? (
+      {!previewUrl && !saved && !manualMode ? (
         <div className="space-y-3">
           <button
             onClick={() => cameraInputRef.current?.click()}
@@ -248,7 +275,92 @@ export function VetVisitTab() {
             <Upload className="w-4 h-4 text-muted-foreground" />
             <span className="text-sm font-semibold text-muted-foreground">갤러리에서 선택</span>
           </button>
+          <button
+            onClick={() => setManualMode(true)}
+            className="w-full py-3.5 rounded-2xl border border-border/60 bg-card flex items-center justify-center gap-2 hover:bg-secondary transition-colors"
+          >
+            <Stethoscope className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-muted-foreground">직접 입력하기</span>
+          </button>
           <p className="text-[11px] text-center text-muted-foreground">영수증, 진료확인서, 진단서 모두 인식 가능해요</p>
+        </div>
+      ) : manualMode && !saved ? (
+        <div className="space-y-4">
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-bold text-muted-foreground mb-1.5">병원명</p>
+              <input
+                type="text"
+                value={manualForm.hospitalName}
+                onChange={(e) => setManualForm((p) => ({ ...p, hospitalName: e.target.value }))}
+                placeholder="동물병원 이름"
+                className="w-full h-11 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none focus:border-teal-400"
+              />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-muted-foreground mb-1.5">방문 날짜</p>
+              <input
+                type="date"
+                value={manualForm.visitDate}
+                onChange={(e) => setManualForm((p) => ({ ...p, visitDate: e.target.value }))}
+                max={new Date().toISOString().slice(0, 10)}
+                className="w-full h-11 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none focus:border-teal-400"
+              />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-muted-foreground mb-1.5">진단명 <span className="font-normal">(선택)</span></p>
+              <input
+                type="text"
+                value={manualForm.diagnosis}
+                onChange={(e) => setManualForm((p) => ({ ...p, diagnosis: e.target.value }))}
+                placeholder="피부염, 위장염 등"
+                className="w-full h-11 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none focus:border-teal-400"
+              />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-muted-foreground mb-1.5">진료비 <span className="font-normal">(선택)</span></p>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={manualForm.totalPrice}
+                  onChange={(e) => setManualForm((p) => ({ ...p, totalPrice: e.target.value }))}
+                  placeholder="0"
+                  className="w-full h-11 px-3 pr-8 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none focus:border-teal-400"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">원</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-muted-foreground mb-1.5">메모 <span className="font-normal">(선택)</span></p>
+              <textarea
+                value={manualForm.notes}
+                onChange={(e) => setManualForm((p) => ({ ...p, notes: e.target.value }))}
+                placeholder="특이사항, 처방 내용 등"
+                rows={3}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-card text-sm text-foreground resize-none focus:outline-none focus:border-teal-400"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleReset}
+              className="flex-1 py-3.5 rounded-2xl border border-border/60 bg-card text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors"
+            >
+              취소
+            </button>
+            <button
+              onClick={handleManualSave}
+              disabled={!manualForm.hospitalName && !manualForm.visitDate}
+              className={cn(
+                "flex-1 py-3.5 rounded-2xl text-sm font-bold transition-colors",
+                manualForm.hospitalName || manualForm.visitDate
+                  ? "bg-teal-600 text-white shadow-md shadow-teal-600/20 hover:bg-teal-700"
+                  : "bg-muted text-muted-foreground"
+              )}
+            >
+              저장하기
+            </button>
+          </div>
         </div>
       ) : previewUrl && !saved ? (
         <div className="relative">
