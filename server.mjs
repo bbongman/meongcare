@@ -114,6 +114,16 @@ const schedules = pgTable("schedules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const aiLogs = pgTable("ai_logs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(),
+  dogName: text("dog_name").notNull(),
+  input: text("input").notNull(),
+  result: jsonb("result").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ── JWT 시크릿 ──────────────────────────────────────────────────────────────
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
 
@@ -361,6 +371,32 @@ app.post("/api/prevention-meds/toggle", authMiddleware, async (req, res) => {
   await db.insert(preventionMeds).values({ id: newId, dogId, userId: req.user.id, type, yearMonth, done: true, doneAt: new Date().toISOString(), productName: productName ?? null });
   const rows = await db.select().from(preventionMeds).where(eq(preventionMeds.id, newId));
   res.json(rows[0]);
+});
+
+// ── AI 로그 CRUD ──────────────────────────────────────────────────────────────
+app.get("/api/ai-logs", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(aiLogs)
+    .where(eq(aiLogs.userId, req.user.id))
+    .orderBy(desc(aiLogs.createdAt));
+  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString() })));
+});
+
+app.post("/api/ai-logs", authMiddleware, async (req, res) => {
+  const { type, dogName, input, result } = req.body;
+  const id = crypto.randomUUID();
+  await db.insert(aiLogs).values({ id, userId: req.user.id, type, dogName, input, result });
+  const rows = await db.select().from(aiLogs).where(eq(aiLogs.id, id));
+  res.json({ ...rows[0], createdAt: rows[0].createdAt?.toISOString() });
+});
+
+app.delete("/api/ai-logs/:id", authMiddleware, async (req, res) => {
+  await db.delete(aiLogs).where(and(eq(aiLogs.id, req.params.id), eq(aiLogs.userId, req.user.id)));
+  res.json({ ok: true });
+});
+
+app.delete("/api/ai-logs", authMiddleware, async (req, res) => {
+  await db.delete(aiLogs).where(eq(aiLogs.userId, req.user.id));
+  res.json({ ok: true });
 });
 
 // ── 스케줄 CRUD ───────────────────────────────────────────────────────────────

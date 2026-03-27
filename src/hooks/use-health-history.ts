@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { userKey } from "@/lib/user-storage";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { apiFetch } from "@/lib/api";
 
 export type HistoryType = "consultation" | "translation" | "product";
 
@@ -43,58 +43,48 @@ export interface HistoryItem {
   result: HistoryResult;
 }
 
-const BASE_KEY = "meongcare_health_history";
-
-function loadHistory(): HistoryItem[] {
-  try {
-    const data = localStorage.getItem(userKey(BASE_KEY));
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(items: HistoryItem[]) {
-  localStorage.setItem(userKey(BASE_KEY), JSON.stringify(items));
-}
-
 export function useHealthHistory() {
-  const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
+  const queryClient = useQueryClient();
 
-  const addItem = useCallback((
-    type: HistoryType,
-    dogName: string,
-    input: string,
-    result: HistoryResult
-  ) => {
-    const item: HistoryItem = {
-      id: uuidv4(),
-      type,
-      dogName,
-      date: new Date().toISOString(),
-      input,
-      result,
-    };
-    setHistory((prev) => {
-      const next = [item, ...prev].slice(0, 50); // 최대 50개
-      saveHistory(next);
-      return next;
-    });
-    return item;
-  }, []);
+  const { data: history = [] } = useQuery<HistoryItem[]>({
+    queryKey: ["ai-logs"],
+    queryFn: async () => {
+      const rows = await apiFetch<any[]>("/api/ai-logs");
+      return rows.map(r => ({ ...r, date: r.createdAt }));
+    },
+  });
 
-  const removeItem = useCallback((id: string) => {
-    setHistory((prev) => {
-      const next = prev.filter((i) => i.id !== id);
-      saveHistory(next);
-      return next;
-    });
-  }, []);
+  const addMutation = useMutation({
+    mutationFn: (item: { type: HistoryType; dogName: string; input: string; result: HistoryResult }) =>
+      apiFetch("/api/ai-logs", { method: "POST", body: JSON.stringify(item) }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["ai-logs"] }); },
+  });
 
-  const clearAll = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setHistory([]);
-  }, []);
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/ai-logs/${id}`, { method: "DELETE" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["ai-logs"] }); },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: () => apiFetch("/api/ai-logs", { method: "DELETE" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["ai-logs"] }); },
+  });
+
+  const addItem = useCallback(
+    (type: HistoryType, dogName: string, input: string, result: HistoryResult) =>
+      addMutation.mutateAsync({ type, dogName, input, result }),
+    [addMutation]
+  );
+
+  const removeItem = useCallback(
+    (id: string) => removeMutation.mutateAsync(id),
+    [removeMutation]
+  );
+
+  const clearAll = useCallback(
+    () => clearMutation.mutateAsync(),
+    [clearMutation]
+  );
 
   return { history, addItem, removeItem, clearAll };
 }

@@ -77,6 +77,16 @@ export const preventionMeds = pgTable("prevention_meds", {
   productName: text("product_name"),
 });
 
+export const aiLogs = pgTable("ai_logs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "consultation" | "translation" | "product"
+  dogName: text("dog_name").notNull(),
+  input: text("input").notNull(),
+  result: jsonb("result").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const schedules = pgTable("schedules", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
