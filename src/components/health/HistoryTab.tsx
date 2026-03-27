@@ -1,20 +1,20 @@
 import { useState } from "react";
 import { useHealthHistory, HistoryItem, ConsultationResult, TranslationResult, ProductResult } from "@/hooks/use-health-history";
-import { Trash2, ChevronDown, ChevronUp, Copy, Share2 } from "lucide-react";
+import { Trash2, ChevronDown, ChevronUp, Share2, LayoutList, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
 const TYPE_CONFIG = {
-  consultation: { label: "AI 문진", emoji: "🩺", color: "bg-blue-100 text-blue-700" },
-  translation: { label: "번역기", emoji: "🐾", color: "bg-purple-100 text-purple-700" },
-  product: { label: "제품 분석", emoji: "🔍", color: "bg-orange-100 text-orange-700" },
+  consultation: { label: "AI 문진", emoji: "🩺", color: "bg-blue-100 text-blue-700", border: "border-blue-200" },
+  translation: { label: "번역기", emoji: "🐾", color: "bg-purple-100 text-purple-700", border: "border-purple-200" },
+  product: { label: "제품 분석", emoji: "🔍", color: "bg-orange-100 text-orange-700", border: "border-orange-200" },
 };
 
-const URGENCY_EMOJI: Record<string, string> = {
-  home: "🏠",
-  tomorrow: "🏥",
-  now: "🚨",
+const URGENCY_CONFIG: Record<string, { emoji: string; label: string; color: string; bg: string }> = {
+  home:     { emoji: "🏠", label: "집에서 케어", color: "text-green-700", bg: "bg-green-50 border-green-200" },
+  tomorrow: { emoji: "🏥", label: "내일 병원 방문", color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
+  now:      { emoji: "🚨", label: "즉시 응급실", color: "text-red-700", bg: "bg-red-50 border-red-200" },
 };
 
 function buildShareText(item: HistoryItem): string {
@@ -32,62 +32,139 @@ function buildShareText(item: HistoryItem): string {
   return `[멍케어 제품분석] ${date}\n강아지: ${item.dogName}\n제품: ${r.productName}\n평가: ${r.rating} — ${r.ratingReason}`;
 }
 
-function HistoryCard({ item, onRemove }: { item: HistoryItem; onRemove: () => void }) {
+// ── 카드형 상세 내용 렌더러 ────────────────────────────────────────────────
+function DetailContent({ item }: { item: HistoryItem }) {
+  if (item.type === "consultation") {
+    const r = item.result as ConsultationResult;
+    const urg = URGENCY_CONFIG[r.urgency];
+    return (
+      <div className="space-y-3">
+        <div className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-bold", urg?.bg, urg?.color)}>
+          <span className="text-lg">{urg?.emoji}</span>
+          {urg?.label}
+        </div>
+        <div className="bg-secondary/50 rounded-xl p-3">
+          <p className="text-[11px] font-semibold text-muted-foreground mb-1">요약</p>
+          <p className="text-sm text-foreground leading-relaxed">{r.summary}</p>
+        </div>
+        {r.advice && (
+          <div className="bg-secondary/50 rounded-xl p-3">
+            <p className="text-[11px] font-semibold text-muted-foreground mb-1">케어 방법</p>
+            <p className="text-sm text-foreground leading-relaxed">{r.advice}</p>
+          </div>
+        )}
+        {r.nextSteps?.length > 0 && (
+          <div className="bg-secondary/50 rounded-xl p-3">
+            <p className="text-[11px] font-semibold text-muted-foreground mb-2">체크리스트</p>
+            <ul className="space-y-1.5">
+              {r.nextSteps.map((step, i) => (
+                <li key={i} className="text-sm text-foreground flex items-start gap-2">
+                  <span className="shrink-0 w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold mt-0.5">{i + 1}</span>
+                  {step}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (item.type === "translation") {
+    const r = item.result as TranslationResult;
+    return (
+      <div className="space-y-3">
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
+          <span className="text-3xl">{r.moodEmoji}</span>
+          <p className="text-sm font-bold text-purple-700 mt-1">{r.mood}</p>
+        </div>
+        <div className="bg-secondary/50 rounded-xl p-3">
+          <p className="text-[11px] font-semibold text-muted-foreground mb-1">번역</p>
+          <p className="text-sm text-foreground leading-relaxed">"{r.translation}"</p>
+        </div>
+        {r.detectedSound && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+            <span>감지된 소리:</span><span className="font-semibold text-foreground">{r.detectedSound}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+          <span>신뢰도:</span><span className="font-semibold text-foreground">{r.confidence}%</span>
+        </div>
+      </div>
+    );
+  }
+
+  // product
+  const r = item.result as ProductResult;
+  const ratingConfig = { 추천: { emoji: "✅", color: "text-green-700", bg: "bg-green-50 border-green-200" }, 보통: { emoji: "🟡", color: "text-amber-700", bg: "bg-amber-50 border-amber-200" }, 주의: { emoji: "⚠️", color: "text-red-700", bg: "bg-red-50 border-red-200" } }[r.rating] ?? { emoji: "🔍", color: "text-foreground", bg: "bg-secondary border-border" };
+  return (
+    <div className="space-y-3">
+      <div className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-bold", ratingConfig.bg, ratingConfig.color)}>
+        <span className="text-lg">{ratingConfig.emoji}</span>
+        {r.rating} — {r.ratingReason}
+      </div>
+      {r.description && (
+        <div className="bg-secondary/50 rounded-xl p-3">
+          <p className="text-[11px] font-semibold text-muted-foreground mb-1">제품 설명</p>
+          <p className="text-sm text-foreground leading-relaxed">{r.description}</p>
+        </div>
+      )}
+      {r.mainIngredients?.length > 0 && (
+        <div className="bg-secondary/50 rounded-xl p-3">
+          <p className="text-[11px] font-semibold text-muted-foreground mb-1">주요 성분</p>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {r.mainIngredients.map((ing, i) => (
+              <span key={i} className="text-xs bg-card border border-border px-2 py-0.5 rounded-full">{ing}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      {r.cautions?.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <p className="text-[11px] font-semibold text-amber-700 mb-1">주의사항</p>
+          <ul className="space-y-1">
+            {r.cautions.map((c, i) => (
+              <li key={i} className="text-sm text-foreground flex items-start gap-1.5">
+                <span className="shrink-0 text-amber-500">•</span>{c}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 리스트형 카드 (접기/펼치기) ───────────────────────────────────────────
+function ListCard({ item, onRemove }: { item: HistoryItem; onRemove: () => void }) {
   const cfg = TYPE_CONFIG[item.type];
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(buildShareText(item));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   async function handleShare() {
     const text = buildShareText(item);
-    if (navigator.share) {
-      await navigator.share({ text }).catch(() => {});
-    } else {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    if (navigator.share) await navigator.share({ text }).catch(() => {});
+    else await navigator.clipboard.writeText(text);
   }
 
   return (
     <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
-      {/* 카드 헤더 — 항상 표시 */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", cfg.color)}>
               {cfg.emoji} {cfg.label}
             </span>
             <span className="text-xs text-muted-foreground font-medium">{item.dogName}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {copied && <span className="text-[10px] text-green-500 font-bold">복사됨</span>}
-            <button onClick={handleShare} className="text-muted-foreground/40 hover:text-primary transition-colors p-1" title="공유">
+            <button onClick={handleShare} className="text-muted-foreground/40 hover:text-primary transition-colors p-1">
               <Share2 className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={handleCopy} className="text-muted-foreground/40 hover:text-primary transition-colors p-1" title="복사">
-              <Copy className="w-3.5 h-3.5" />
             </button>
             {confirmDelete ? (
               <div className="flex items-center gap-1">
-                <button
-                  onClick={onRemove}
-                  className="text-[11px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md"
-                >
-                  삭제
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  className="text-[11px] font-semibold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-md"
-                >
-                  취소
-                </button>
+                <button onClick={onRemove} className="text-[11px] font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md">삭제</button>
+                <button onClick={() => setConfirmDelete(false)} className="text-[11px] font-semibold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-md">취소</button>
               </div>
             ) : (
               <button onClick={() => setConfirmDelete(true)} className="text-muted-foreground/40 hover:text-red-400 transition-colors p-1">
@@ -97,29 +174,26 @@ function HistoryCard({ item, onRemove }: { item: HistoryItem; onRemove: () => vo
           </div>
         </div>
 
-        <p className="text-sm text-foreground font-medium truncate">{item.input}</p>
+        <p className="text-sm text-foreground font-medium line-clamp-2">{item.input}</p>
 
-        {/* 요약 미리보기 */}
-        {item.type === "consultation" && item.result && (
-          <div className="mt-2 flex items-center gap-2">
-            <span className="text-base">{URGENCY_EMOJI[item.result.urgency] ?? "🩺"}</span>
-            <p className="text-xs text-muted-foreground line-clamp-2">{item.result.summary}</p>
-          </div>
+        {/* 한줄 미리보기 */}
+        {item.type === "consultation" && (item.result as ConsultationResult).summary && (
+          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">
+            {URGENCY_CONFIG[(item.result as ConsultationResult).urgency]?.emoji} {(item.result as ConsultationResult).summary}
+          </p>
         )}
-        {item.type === "translation" && item.result && (
-          <div className="mt-2 flex items-center gap-2">
-            <span className="text-base">{item.result.moodEmoji}</span>
-            <p className="text-xs text-muted-foreground line-clamp-2">{item.result.translation}</p>
-          </div>
+        {item.type === "translation" && (
+          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">
+            {(item.result as TranslationResult).moodEmoji} {(item.result as TranslationResult).translation}
+          </p>
         )}
-        {item.type === "product" && item.result && (
-          <div className="mt-2 flex items-center gap-2">
-            <span className="text-base">{item.result.rating === "추천" ? "✅" : item.result.rating === "주의" ? "⚠️" : "🟡"}</span>
-            <p className="text-xs text-muted-foreground">{item.result.rating} — {item.result.ratingReason}</p>
-          </div>
+        {item.type === "product" && (
+          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">
+            {(item.result as ProductResult).rating === "추천" ? "✅" : (item.result as ProductResult).rating === "주의" ? "⚠️" : "🟡"} {(item.result as ProductResult).ratingReason}
+          </p>
         )}
 
-        <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center justify-between mt-2.5">
           <p className="text-[11px] text-muted-foreground/60">
             {format(new Date(item.date), "M월 d일 HH:mm", { locale: ko })}
           </p>
@@ -133,86 +207,64 @@ function HistoryCard({ item, onRemove }: { item: HistoryItem; onRemove: () => vo
         </div>
       </div>
 
-      {/* 상세 내용 — 펼쳤을 때만 */}
       {expanded && (
-        <div className="border-t border-border/40 bg-secondary/30 p-4 space-y-2.5 text-xs">
-          {item.type === "consultation" && (() => {
-            const r = item.result as ConsultationResult;
-            return (
-              <>
-                <div>
-                  <p className="font-semibold text-muted-foreground mb-1">케어 방법</p>
-                  <p className="text-foreground leading-relaxed">{r.advice}</p>
-                </div>
-                {r.nextSteps?.length > 0 && (
-                  <div>
-                    <p className="font-semibold text-muted-foreground mb-1">체크리스트</p>
-                    <ul className="space-y-1">
-                      {r.nextSteps.map((step, i) => (
-                        <li key={i} className="text-foreground flex items-start gap-1.5">
-                          <span className="shrink-0 text-primary">•</span>{step}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-
-          {item.type === "translation" && (() => {
-            const r = item.result as TranslationResult;
-            return (
-              <>
-                <div>
-                  <p className="font-semibold text-muted-foreground mb-1">기분</p>
-                  <p className="text-foreground">{r.moodEmoji} {r.mood}</p>
-                </div>
-                {r.detectedSound && (
-                  <div>
-                    <p className="font-semibold text-muted-foreground mb-1">감지된 소리</p>
-                    <p className="text-foreground">{r.detectedSound}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="font-semibold text-muted-foreground mb-1">신뢰도</p>
-                  <p className="text-foreground">{r.confidence}%</p>
-                </div>
-              </>
-            );
-          })()}
-
-          {item.type === "product" && (() => {
-            const r = item.result as ProductResult;
-            return (
-              <>
-                <div>
-                  <p className="font-semibold text-muted-foreground mb-1">제품 설명</p>
-                  <p className="text-foreground leading-relaxed">{r.description}</p>
-                </div>
-                {r.mainIngredients?.length > 0 && (
-                  <div>
-                    <p className="font-semibold text-muted-foreground mb-1">주요 성분</p>
-                    <p className="text-foreground">{r.mainIngredients.join(", ")}</p>
-                  </div>
-                )}
-                {r.cautions?.length > 0 && (
-                  <div>
-                    <p className="font-semibold text-muted-foreground mb-1">주의사항</p>
-                    <ul className="space-y-0.5">
-                      {r.cautions.map((c, i) => (
-                        <li key={i} className="text-foreground flex items-start gap-1.5">
-                          <span className="shrink-0 text-amber-500">•</span>{c}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            );
-          })()}
+        <div className="border-t border-border/40 bg-secondary/20 p-4">
+          <DetailContent item={item} />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── 카드형 (전체 내용 펼침) ───────────────────────────────────────────────
+function FullCard({ item, onRemove }: { item: HistoryItem; onRemove: () => void }) {
+  const cfg = TYPE_CONFIG[item.type];
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function handleShare() {
+    const text = buildShareText(item);
+    if (navigator.share) await navigator.share({ text }).catch(() => {});
+    else await navigator.clipboard.writeText(text);
+  }
+
+  return (
+    <div className={cn("rounded-2xl border-2 bg-card overflow-hidden", cfg.border)}>
+      {/* 헤더 */}
+      <div className={cn("px-4 py-3 flex items-center justify-between", cfg.color.replace("text-", "bg-").replace("-700", "-50").replace("-100", "-50"))}>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{cfg.emoji}</span>
+          <div>
+            <p className="text-xs font-bold">{cfg.label}</p>
+            <p className="text-[11px] opacity-70">{item.dogName} · {format(new Date(item.date), "M월 d일 HH:mm", { locale: ko })}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={handleShare} className="opacity-50 hover:opacity-100 transition-opacity p-1">
+            <Share2 className="w-3.5 h-3.5" />
+          </button>
+          {confirmDelete ? (
+            <div className="flex items-center gap-1">
+              <button onClick={onRemove} className="text-[11px] font-bold text-red-500 bg-white px-1.5 py-0.5 rounded-md border border-red-200">삭제</button>
+              <button onClick={() => setConfirmDelete(false)} className="text-[11px] text-muted-foreground bg-white px-1.5 py-0.5 rounded-md border">취소</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} className="opacity-40 hover:opacity-80 transition-opacity p-1">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 입력값 */}
+      <div className="px-4 pt-3 pb-1">
+        <p className="text-[11px] font-semibold text-muted-foreground mb-0.5">입력</p>
+        <p className="text-sm text-foreground font-medium">{item.input}</p>
+      </div>
+
+      {/* 전체 상세 내용 */}
+      <div className="px-4 pb-4 pt-3">
+        <DetailContent item={item} />
+      </div>
     </div>
   );
 }
@@ -230,6 +282,7 @@ export function HistoryTab() {
   const { history, removeItem, clearAll } = useHealthHistory();
   const [filter, setFilter] = useState<FilterType>("all");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [cardView, setCardView] = useState(false);
 
   const filtered = filter === "all" ? history : history.filter((i) => i.type === filter);
 
@@ -245,8 +298,8 @@ export function HistoryTab() {
 
   return (
     <div className="space-y-3">
-      {/* 필터 */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      {/* 필터 + 뷰 토글 */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
         {FILTERS.map((f) => (
           <button
             key={f.id}
@@ -255,36 +308,39 @@ export function HistoryTab() {
               "flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all border",
               filter === f.id
                 ? "bg-primary text-white border-primary"
-                : "bg-card text-muted-foreground border-border/50 hover:border-primary/30"
+                : "bg-card text-muted-foreground border-border/50"
             )}
           >
             <span>{f.emoji}</span>{f.label}
           </button>
         ))}
-        {confirmClear ? (
-          <div className="ml-auto flex items-center gap-1.5 shrink-0">
-            <span className="text-[11px] text-muted-foreground">정말 삭제할까요?</span>
-            <button
-              onClick={() => { clearAll(); setConfirmClear(false); }}
-              className="text-xs text-red-500 font-bold px-2 py-0.5 bg-red-50 rounded-full border border-red-200"
-            >
-              삭제
-            </button>
-            <button
-              onClick={() => setConfirmClear(false)}
-              className="text-xs text-muted-foreground font-semibold px-2 py-0.5 bg-secondary rounded-full"
-            >
-              취소
-            </button>
-          </div>
-        ) : (
+
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          {/* 뷰 토글 */}
           <button
-            onClick={() => setConfirmClear(true)}
-            className="ml-auto text-xs text-red-400 hover:text-red-500 font-semibold transition-colors shrink-0 px-2"
+            onClick={() => setCardView((v) => !v)}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all",
+              cardView
+                ? "bg-primary text-white border-primary"
+                : "bg-card text-muted-foreground border-border/50"
+            )}
+            title={cardView ? "리스트 보기" : "카드 보기"}
           >
-            전체 삭제
+            {cardView ? <LayoutGrid className="w-3.5 h-3.5" /> : <LayoutList className="w-3.5 h-3.5" />}
+            {cardView ? "카드" : "목록"}
           </button>
-        )}
+
+          {/* 전체 삭제 */}
+          {confirmClear ? (
+            <div className="flex items-center gap-1">
+              <button onClick={() => { clearAll(); setConfirmClear(false); }} className="text-xs text-red-500 font-bold px-2 py-0.5 bg-red-50 rounded-full border border-red-200">삭제</button>
+              <button onClick={() => setConfirmClear(false)} className="text-xs text-muted-foreground font-semibold px-2 py-0.5 bg-secondary rounded-full">취소</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmClear(true)} className="text-xs text-red-400 hover:text-red-500 font-semibold transition-colors px-1">전체삭제</button>
+          )}
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">{filtered.length}개</p>
@@ -294,9 +350,13 @@ export function HistoryTab() {
           <p className="text-sm text-muted-foreground">해당 유형의 기록이 없어요</p>
         </div>
       ) : (
-        filtered.map((item) => (
-          <HistoryCard key={item.id} item={item} onRemove={() => removeItem(item.id)} />
-        ))
+        <div className="space-y-3">
+          {filtered.map((item) =>
+            cardView
+              ? <FullCard key={item.id} item={item} onRemove={() => removeItem(item.id)} />
+              : <ListCard key={item.id} item={item} onRemove={() => removeItem(item.id)} />
+          )}
+        </div>
       )}
     </div>
   );
