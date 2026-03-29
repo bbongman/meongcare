@@ -54,8 +54,8 @@ export function PreventionTab() {
                   prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
                 )}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all",
-                  active ? "bg-primary text-white border-primary" : "bg-card border-border/50 text-muted-foreground"
+                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-colors",
+                  active ? "bg-primary text-white border-primary shadow-sm shadow-primary/25" : "bg-card border-border/50 text-muted-foreground"
                 )}
               >
                 <span>{cfg.emoji}</span>{cfg.label}
@@ -68,7 +68,7 @@ export function PreventionTab() {
       {/* 월별 체크 테이블 */}
       <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
         {/* 헤더 */}
-        <div className="grid bg-secondary/40 px-4 py-2 border-b border-border/30" style={{ gridTemplateColumns: `1fr ${activeTypes.map(() => "3rem").join(" ")}` }}>
+        <div className="grid bg-secondary/40 px-4 py-2 border-b border-border/30" style={{ gridTemplateColumns: `1fr ${activeTypes.map(() => "3.5rem").join(" ")}` }}>
           <span className="text-[11px] font-bold text-muted-foreground">월</span>
           {activeTypes.map((type) => (
             <span key={type} className="text-[11px] font-bold text-muted-foreground text-center">{MED_LABELS[type].emoji}</span>
@@ -80,7 +80,7 @@ export function PreventionTab() {
           <div
             key={ym}
             className="grid px-4 py-3 border-b border-border/20 last:border-0 items-center"
-            style={{ gridTemplateColumns: `1fr ${activeTypes.map(() => "3rem").join(" ")}` }}
+            style={{ gridTemplateColumns: `1fr ${activeTypes.map(() => "3.5rem").join(" ")}` }}
           >
             <MonthLabel yearMonth={ym} />
             {activeTypes.map((type) => {
@@ -91,9 +91,9 @@ export function PreventionTab() {
                   <button
                     onClick={() => toggle(type, ym)}
                     className={cn(
-                      "w-8 h-8 rounded-xl flex items-center justify-center transition-all border-2",
+                      "w-10 h-10 rounded-xl flex items-center justify-center transition-colors border-2",
                       done
-                        ? "bg-primary border-primary text-white"
+                        ? "bg-primary border-primary text-white shadow-sm shadow-primary/30"
                         : "bg-secondary/50 border-border/40 text-muted-foreground/30 hover:border-primary/30"
                     )}
                   >

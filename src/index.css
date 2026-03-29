@@ -109,8 +109,8 @@
     touch-action: manipulation;
   }
   button:not(:disabled):active, [role="button"]:not(:disabled):active {
-    transform: scale(0.94);
-    transition: transform 0ms;
+    transform: scale(0.94) !important;
+    transition: transform 0ms !important;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-bold tracking-tight;
