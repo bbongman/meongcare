@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { useDogs } from "@/hooks/use-dogs";
 import { usePreventionMeds, MED_LABELS, type MedType } from "@/hooks/use-prevention-meds";
 import { DogSelector } from "@/components/health/DogSelector";
@@ -48,8 +49,10 @@ export function PreventionTab() {
             const cfg = MED_LABELS[type];
             const active = activeTypes.includes(type);
             return (
-              <button
+              <motion.button
                 key={type}
+                whileTap={{ scale: 0.92 }}
+                transition={{ duration: 0.08 }}
                 onClick={() => setActiveTypes((prev) =>
                   prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
                 )}
@@ -59,7 +62,7 @@ export function PreventionTab() {
                 )}
               >
                 <span>{cfg.emoji}</span>{cfg.label}
-              </button>
+              </motion.button>
             );
           })}
         </div>
@@ -88,7 +91,9 @@ export function PreventionTab() {
               const done = rec?.done ?? false;
               return (
                 <div key={type} className="flex justify-center">
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.82 }}
+                    transition={{ duration: 0.08 }}
                     onClick={() => toggle(type, ym)}
                     className={cn(
                       "w-10 h-10 rounded-xl flex items-center justify-center transition-colors border-2",
@@ -98,7 +103,7 @@ export function PreventionTab() {
                     )}
                   >
                     {done ? <Check className="w-4 h-4 stroke-[3px]" /> : <span className="text-xs">—</span>}
-                  </button>
+                  </motion.button>
                 </div>
               );
             })}

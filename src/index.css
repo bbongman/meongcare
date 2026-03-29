@@ -107,6 +107,7 @@
   }
   button, [role="button"], a {
     touch-action: manipulation;
+    cursor: pointer;
   }
   button:not(:disabled):active, [role="button"]:not(:disabled):active {
     transform: scale(0.94) !important;
