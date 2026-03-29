@@ -67,19 +67,20 @@ export default function Health() {
 
         {/* 탭 바 */}
         <div className="flex items-center gap-2 mb-5">
-          <div className="flex gap-1.5 overflow-x-auto pb-1 flex-1 min-w-0">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 flex-1 min-w-0 scrollbar-hide">
             {orderedTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border",
+                  "flex items-center gap-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border",
                   activeTab === tab.id
-                    ? "bg-primary text-white border-primary shadow-sm"
-                    : "bg-card text-muted-foreground border-border/50 hover:border-primary/30"
+                    ? "bg-primary text-white border-primary shadow-sm px-3 py-2"
+                    : "bg-card text-muted-foreground border-border/50 hover:border-primary/30 px-2.5 py-2"
                 )}
               >
-                <span>{tab.emoji}</span>{tab.label}
+                <span>{tab.emoji}</span>
+                {activeTab === tab.id && <span>{tab.label}</span>}
               </button>
             ))}
           </div>

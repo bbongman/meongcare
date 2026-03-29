@@ -683,7 +683,7 @@ export default function Home() {
                       <div className="bg-secondary/50 rounded-2xl p-3">
                         <p className="text-[11px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">나이</p>
                         <p className="font-bold text-foreground text-lg">{getDisplayAge(dog)}<span className="text-sm font-medium text-muted-foreground ml-0.5">살</span></p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">사람 나이로 약 {toHumanAge(getDisplayAge(dog), dog.weight)}살</p>
+                        <span className="text-[11px] font-bold text-primary/70 bg-primary/10 px-1.5 py-0.5 rounded-full mt-1.5 inline-block">사람 {toHumanAge(getDisplayAge(dog), dog.weight)}살</span>
                       </div>
                       <div className="bg-secondary/50 rounded-2xl p-3">
                         <p className="text-[11px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">몸무게</p>

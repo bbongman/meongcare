@@ -66,7 +66,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading || !name.trim() || !password}
-            className="w-full h-12 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all"
+            className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-orange-500 text-white font-bold text-sm hover:opacity-90 disabled:opacity-40 transition-all shadow-lg shadow-primary/20"
           >
             {loading ? "..." : mode === "login" ? "로그인" : "가입하기"}
           </button>

@@ -23,9 +23,8 @@ export function Layout({ children }: LayoutProps) {
     <div className="h-[100dvh] bg-background flex flex-col relative w-full max-w-md mx-auto shadow-2xl shadow-black/5 overflow-hidden border-x border-border/50">
       {/* 사용자 바 */}
       {user && (
-        <div className="flex items-center justify-between px-5 pt-2 pb-0 shrink-0">
-          <p className="text-xs text-muted-foreground font-medium">{user.name}</p>
-          <button onClick={logout} className="flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-red-400 transition-colors">
+        <div className="flex items-center justify-end px-4 pt-2 pb-0 shrink-0">
+          <button onClick={logout} className="flex items-center gap-1 text-[11px] text-muted-foreground/40 hover:text-red-400 transition-colors py-1 px-1.5 rounded-lg hover:bg-red-50">
             <LogOut className="w-3 h-3" />
             로그아웃
           </button>
