@@ -42,6 +42,19 @@ export function usePreventionMeds(dogId: string) {
         method: "POST",
         body: JSON.stringify({ dogId, type, yearMonth, productName }),
       }),
+    onMutate: async ({ type, yearMonth }) => {
+      await queryClient.cancelQueries({ queryKey: ["prevention-meds", dogId] });
+      const prev = queryClient.getQueryData<MedRecord[]>(["prevention-meds", dogId]);
+      queryClient.setQueryData<MedRecord[]>(["prevention-meds", dogId], (old = []) => {
+        const existing = old.find((r) => r.type === type && r.yearMonth === yearMonth);
+        if (existing) return old.map((r) => r.type === type && r.yearMonth === yearMonth ? { ...r, done: !r.done } : r);
+        return [...old, { dogId, type, yearMonth, done: true }];
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev) queryClient.setQueryData(["prevention-meds", dogId], context.prev);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["prevention-meds", dogId] }); },
   });
 
