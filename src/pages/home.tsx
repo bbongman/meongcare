@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check, Stethoscope, ChevronRight, Download } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check, Stethoscope, ChevronRight, Download, Pencil } from "lucide-react";
+import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { userKey } from "@/lib/user-storage";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
@@ -41,27 +42,139 @@ function TodayConditionBadge({ dogId }: { dogId: string }) {
   );
 }
 
-function TodayCheckButton({ dogId, onClick }: { dogId: string; onClick: () => void }) {
-  const { todayLog } = useDailyLog(dogId);
-  const MEAL_EMOJI = ["😞", "😐", "🙂", "😋"];
-
+function TodayCheckButton({ dogId, onClick, hasLog }: { dogId: string; onClick: () => void; hasLog: boolean }) {
   return (
     <div className="bg-orange-50/80 border border-orange-100 rounded-3xl p-5 cursor-pointer hover:bg-orange-100 transition-colors group" onClick={onClick}>
       <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary mb-4 group-hover:scale-110 transition-transform">
         <Activity className="w-6 h-6 stroke-[2.5px]" />
       </div>
       <h3 className="font-bold text-foreground">오늘 건강 체크</h3>
-      {todayLog ? (
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          <span className="text-xs">{MEAL_EMOJI[todayLog.meal]}</span>
-          {todayLog.walk && <span className="text-xs">🦮</span>}
-          {todayLog.poop && <span className="text-xs">💩</span>}
-          <span className="text-[10px] text-green-600 font-semibold">기록 완료</span>
-        </div>
-      ) : (
-        <p className="text-xs font-medium text-muted-foreground mt-1">컨디션 기록하기</p>
-      )}
+      <p className="text-xs font-medium text-muted-foreground mt-1">{hasLog ? "수정하기" : "컨디션 기록하기"}</p>
     </div>
+  );
+}
+
+function TodayStatusCard({ dogId, onEdit }: { dogId: string; onEdit: () => void }) {
+  const { todayLog, recentLogs } = useDailyLog(dogId);
+
+  if (!todayLog) return null;
+
+  const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
+  const MEAL_COLOR = ["bg-gray-300", "bg-yellow-300", "bg-orange-400", "bg-orange-500"];
+  const ENERGY_LABEL = ["축처짐", "보통", "활발"];
+  const ENERGY_COLOR = ["bg-blue-300", "bg-green-400", "bg-orange-400"];
+
+  const recent = recentLogs(7);
+  const chartData = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const key = d.toISOString().slice(0, 10);
+    const log = recent.find((l) => l.date === key);
+    return { label: `${d.getMonth() + 1}/${d.getDate()}`, energy: log ? log.energy : null };
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-card border border-border/50 rounded-3xl p-5 space-y-4"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-bold text-foreground">오늘 컨디션</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{new Date().toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" })}</p>
+        </div>
+        <button
+          onClick={onEdit}
+          className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* 게이지 */}
+      <div className="space-y-3">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-muted-foreground">식사량</span>
+            <span className="text-xs font-bold text-foreground">{MEAL_LABEL[todayLog.meal]}</span>
+          </div>
+          <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all duration-500", MEAL_COLOR[todayLog.meal])}
+              style={{ width: `${(todayLog.meal / 3) * 100}%` }}
+            />
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-muted-foreground">기력</span>
+            <span className="text-xs font-bold text-foreground">{ENERGY_LABEL[todayLog.energy]}</span>
+          </div>
+          <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all duration-500", ENERGY_COLOR[todayLog.energy])}
+              style={{ width: `${(todayLog.energy / 2) * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 아이콘 배지 */}
+      <div className="flex gap-2">
+        {[
+          { label: "산책", value: todayLog.walk, icon: "🦮" },
+          { label: "배변", value: todayLog.poop, icon: "💩" },
+          { label: "소변", value: todayLog.pee, icon: "💧" },
+        ].map(({ label, value, icon }) => (
+          <div
+            key={label}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold",
+              value ? "bg-green-50 text-green-700 border border-green-200" : "bg-secondary text-muted-foreground border border-border/30"
+            )}
+          >
+            <span>{icon}</span>{label}
+            {value ? <Check className="w-3 h-3" /> : <X className="w-3 h-3 opacity-40" />}
+          </div>
+        ))}
+      </div>
+
+      {/* 7일 기력 스파크라인 */}
+      {recent.length >= 2 && (
+        <div>
+          <p className="text-[10px] text-muted-foreground mb-1">최근 7일 기력 흐름</p>
+          <ResponsiveContainer width="100%" height={56}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="energyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="label" tick={{ fontSize: 8 }} tickLine={false} axisLine={false} />
+              <Tooltip
+                formatter={(v: number | null) => [v !== null ? ENERGY_LABEL[v] : "-", "기력"]}
+                contentStyle={{ fontSize: 10, borderRadius: 8 }}
+              />
+              <Area
+                type="monotone"
+                dataKey="energy"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                fill="url(#energyGrad)"
+                connectNulls
+                dot={{ r: 3, fill: "hsl(var(--primary))" }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {todayLog.memo && (
+        <p className="text-xs text-muted-foreground bg-secondary rounded-xl px-3 py-2">{todayLog.memo}</p>
+      )}
+    </motion.div>
   );
 }
 
@@ -129,6 +242,41 @@ function getHealthTip(dog: Dog): { emoji: string; title: string; body: string } 
     title: `노령견 케어 · ${breed}`,
     body: `계단과 점프를 줄이고 관절 보조제를 고려하세요.${weightTip ? ` ${weightTip}` : " 식사량 변화나 음수량 증가에 주의하세요."}`,
   };
+}
+
+function WeeklyHealthWidget({ dogId, dogName }: { dogId: string; dogName: string }) {
+  const { recentLogs } = useDailyLog(dogId);
+  const logs = recentLogs(7);
+  if (logs.length < 3) return null;
+
+  const walkDays = logs.filter((l) => l.walk).length;
+  const avgMeal = logs.reduce((s, l) => s + l.meal, 0) / logs.length;
+  const avgEnergy = logs.reduce((s, l) => s + l.energy, 0) / logs.length;
+  const ENERGY_LABEL = ["축처짐", "보통", "활발"];
+  const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
+  const energyIdx = Math.round(avgEnergy);
+  const mealIdx = Math.round(avgMeal);
+  const energyColor = energyIdx === 2 ? "text-orange-500" : energyIdx === 1 ? "text-green-500" : "text-blue-400";
+
+  return (
+    <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-100 rounded-3xl p-4">
+      <p className="text-xs font-bold text-violet-600 mb-3">{dogName} · 이번 주 요약</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-white/70 rounded-2xl p-3 text-center">
+          <p className="text-xl font-bold text-green-500">{walkDays}일</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">산책 / 7일</p>
+        </div>
+        <div className="bg-white/70 rounded-2xl p-3 text-center">
+          <p className="text-xl font-bold text-orange-500">{MEAL_LABEL[mealIdx]}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">평균 식사</p>
+        </div>
+        <div className="bg-white/70 rounded-2xl p-3 text-center">
+          <p className={cn("text-xl font-bold", energyColor)}>{ENERGY_LABEL[energyIdx]}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">평균 기력</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function HealthTipWidget({ dog }: { dog: Dog }) {
@@ -392,6 +540,8 @@ export default function Home() {
   const [editingDog, setEditingDog] = useState<Dog | null>(null);
   const [dailyCheckOpen, setDailyCheckOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const firstDogId = dogs?.[0]?.id ?? "";
+  const { todayLog: firstDogTodayLog } = useDailyLog(firstDogId);
 
   const profileEmoji = user?.gender === "male" ? "👨🏻" : user?.gender === "female" ? "👩🏻" : "🧑🏻";
 
@@ -550,6 +700,9 @@ export default function Home() {
               </AnimatePresence>
             </div>
 
+            {/* 주간 건강 요약 */}
+            <WeeklyHealthWidget dogId={dogs[0].id} dogName={dogs[0].name} />
+
             {/* 매일 건강 체크 리마인더 */}
             <DailyReminderBanner />
 
@@ -572,11 +725,18 @@ export default function Home() {
               </div>
             )}
 
+            {/* 오늘 컨디션 카드 */}
+            <AnimatePresence>
+              {firstDogTodayLog && (
+                <TodayStatusCard dogId={dogs[0].id} onEdit={() => setDailyCheckOpen(true)} />
+              )}
+            </AnimatePresence>
+
             {/* Quick Actions */}
             <div className="mt-2 space-y-4">
               <h2 className="text-xl font-bold text-foreground mb-4">빠른 실행</h2>
               <div className="grid grid-cols-2 gap-4">
-                <TodayCheckButton dogId={dogs[0].id} onClick={() => setDailyCheckOpen(true)} />
+                <TodayCheckButton dogId={dogs[0].id} onClick={() => setDailyCheckOpen(true)} hasLog={!!firstDogTodayLog} />
                 <div
                   className="bg-purple-50/80 border border-purple-100 rounded-3xl p-5 cursor-pointer hover:bg-purple-100 transition-colors group"
                   onClick={() => setLocation("/schedule")}

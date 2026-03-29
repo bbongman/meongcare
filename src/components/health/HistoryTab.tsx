@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { useHealthHistory, HistoryItem, ConsultationResult, TranslationResult, ProductResult } from "@/hooks/use-health-history";
+import { useHealthHistory, HistoryItem, ConsultationResult, TranslationResult, ProductResult, BehaviorResult, FoodResult } from "@/hooks/use-health-history";
 import { Trash2, ChevronDown, ChevronUp, Share2, LayoutList, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
-const TYPE_CONFIG = {
+const TYPE_CONFIG: Record<string, { label: string; emoji: string; color: string; border: string }> = {
   consultation: { label: "AI 문진", emoji: "🩺", color: "bg-blue-100 text-blue-700", border: "border-blue-200" },
   translation: { label: "번역기", emoji: "🐾", color: "bg-purple-100 text-purple-700", border: "border-purple-200" },
   product: { label: "제품 분석", emoji: "🔍", color: "bg-orange-100 text-orange-700", border: "border-orange-200" },
+  behavior: { label: "행동 & 훈련", emoji: "🐕‍🦺", color: "bg-indigo-100 text-indigo-700", border: "border-indigo-200" },
+  food: { label: "음식 체크", emoji: "🍖", color: "bg-green-100 text-green-700", border: "border-green-200" },
 };
 
 const URGENCY_CONFIG: Record<string, { emoji: string; label: string; color: string; bg: string }> = {
@@ -28,8 +30,19 @@ function buildShareText(item: HistoryItem): string {
     const r = item.result as TranslationResult;
     return `[멍케어 번역기] ${date}\n강아지: ${item.dogName}\n기분: ${r.moodEmoji} ${r.mood}\n\n"${r.translation}"`;
   }
-  const r = item.result as ProductResult;
-  return `[멍케어 제품분석] ${date}\n강아지: ${item.dogName}\n제품: ${r.productName}\n평가: ${r.rating} — ${r.ratingReason}`;
+  if (item.type === "behavior") {
+    const r = item.result as BehaviorResult;
+    return `[멍케어 행동상담] ${date}\n강아지: ${item.dogName}\n질문: ${item.input}\n\n분류: ${r.category}\n요약: ${r.summary}`;
+  }
+  if (item.type === "food") {
+    const r = item.result as FoodResult;
+    return `[멍케어 음식체크] ${date}\n강아지: ${item.dogName}\n음식: ${r.food}\n판정: ${r.safetyLabel}\n\n${r.reason}`;
+  }
+  if (item.type === "product") {
+    const r = item.result as ProductResult;
+    return `[멍케어 제품분석] ${date}\n강아지: ${item.dogName}\n제품: ${r.productName}\n평가: ${r.rating} — ${r.ratingReason}`;
+  }
+  return `[멍케어] ${date}\n강아지: ${item.dogName}\n${item.input}`;
 }
 
 // ── 카드형 상세 내용 렌더러 ────────────────────────────────────────────────
@@ -90,6 +103,72 @@ function DetailContent({ item }: { item: HistoryItem }) {
         <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
           <span>신뢰도:</span><span className="font-semibold text-foreground">{r.confidence}%</span>
         </div>
+      </div>
+    );
+  }
+
+  if (item.type === "behavior") {
+    const r = item.result as BehaviorResult;
+    return (
+      <div className="space-y-3">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
+          <span className="text-xs font-bold text-indigo-600 px-2 py-0.5 bg-indigo-100 rounded-full">{r.category}</span>
+          <p className="text-sm font-bold text-indigo-900 mt-2 leading-snug">{r.summary}</p>
+        </div>
+        <div className="bg-secondary/50 rounded-xl p-3">
+          <p className="text-[11px] font-semibold text-muted-foreground mb-1">원인 분석</p>
+          <p className="text-sm text-foreground leading-relaxed">{r.cause}</p>
+        </div>
+        {r.steps?.length > 0 && (
+          <div className="bg-secondary/50 rounded-xl p-3">
+            <p className="text-[11px] font-semibold text-muted-foreground mb-2">훈련 방법</p>
+            <ul className="space-y-1.5">
+              {r.steps.map((s) => (
+                <li key={s.step} className="text-sm text-foreground flex items-start gap-2">
+                  <span className="shrink-0 w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold mt-0.5">{s.step}</span>
+                  <span><span className="font-semibold">{s.title}</span> — {s.desc}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {r.caution && (
+          <div className="bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+            <p className="text-[11px] font-bold text-red-600 mb-0.5">주의사항</p>
+            <p className="text-xs text-red-700">{r.caution}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (item.type === "food") {
+    const r = item.result as FoodResult;
+    const safetyStyle = { safe: "bg-green-50 border-green-200 text-green-800", caution: "bg-yellow-50 border-yellow-200 text-yellow-800", danger: "bg-red-50 border-red-200 text-red-800" }[r.safety] ?? "bg-secondary border-border text-foreground";
+    return (
+      <div className="space-y-3">
+        <div className={cn("border rounded-xl p-3", safetyStyle)}>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-base">{r.food}</span>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/60">{r.safetyLabel}</span>
+          </div>
+          <p className="text-sm mt-2 leading-relaxed">{r.reason}</p>
+        </div>
+        {r.symptoms?.length > 0 && (
+          <div className="bg-secondary/50 rounded-xl p-3">
+            <p className="text-[11px] font-semibold text-muted-foreground mb-1">주의 증상</p>
+            <div className="flex flex-wrap gap-1">
+              {r.symptoms.map((s, i) => (
+                <span key={i} className="text-xs bg-card border border-border px-2 py-0.5 rounded-full">{s}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        {r.tip && (
+          <div className="bg-secondary/50 rounded-xl px-3 py-2">
+            <p className="text-xs text-muted-foreground">{r.tip}</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -192,6 +271,16 @@ function ListCard({ item, onRemove }: { item: HistoryItem; onRemove: () => void 
             {(item.result as ProductResult).rating === "추천" ? "✅" : (item.result as ProductResult).rating === "주의" ? "⚠️" : "🟡"} {(item.result as ProductResult).ratingReason}
           </p>
         )}
+        {item.type === "behavior" && (
+          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">
+            {(item.result as BehaviorResult).category} — {(item.result as BehaviorResult).summary}
+          </p>
+        )}
+        {item.type === "food" && (
+          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">
+            {(item.result as FoodResult).safetyLabel} — {(item.result as FoodResult).reason}
+          </p>
+        )}
 
         <div className="flex items-center justify-between mt-2.5">
           <p className="text-[11px] text-muted-foreground/60">
@@ -269,13 +358,15 @@ function FullCard({ item, onRemove }: { item: HistoryItem; onRemove: () => void 
   );
 }
 
-type FilterType = "all" | "consultation" | "translation" | "product";
+type FilterType = "all" | "consultation" | "translation" | "product" | "behavior" | "food";
 
 const FILTERS: { id: FilterType; label: string; emoji: string }[] = [
   { id: "all", label: "전체", emoji: "📋" },
   { id: "consultation", label: "문진", emoji: "🩺" },
   { id: "translation", label: "번역", emoji: "🐾" },
   { id: "product", label: "제품", emoji: "🔍" },
+  { id: "behavior", label: "행동", emoji: "🐕‍🦺" },
+  { id: "food", label: "음식", emoji: "🍖" },
 ];
 
 export function HistoryTab() {

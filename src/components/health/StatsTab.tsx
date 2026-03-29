@@ -4,6 +4,8 @@ import { useDogs } from "@/hooks/use-dogs";
 import { useDailyLog } from "@/hooks/use-daily-log";
 import { useWeightHistory } from "@/hooks/use-weight-history";
 import { cn } from "@/lib/utils";
+import { getAuthToken } from "@/hooks/use-auth";
+import { FileDown } from "lucide-react";
 
 const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
 const ENERGY_LABEL = ["축처짐", "보통", "활발"];
@@ -232,7 +234,23 @@ export function StatsTab() {
           ))}
         </div>
       )}
-      {activeDogId && <StatsContent dogId={activeDogId} />}
+      {activeDogId && (
+        <>
+          <StatsContent dogId={activeDogId} />
+          <div className="mt-5">
+            <button
+              onClick={() => {
+                const token = getAuthToken();
+                window.open(`/api/report/${activeDogId}?token=${token}`, "_blank");
+              }}
+              className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-muted-foreground bg-card border border-border/50 rounded-2xl hover:border-primary/40 hover:text-primary transition-colors"
+            >
+              <FileDown className="w-4 h-4" />
+              건강 리포트 PDF로 저장
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

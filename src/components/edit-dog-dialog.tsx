@@ -21,13 +21,17 @@ interface EditDogDialogProps {
 
 export function EditDogDialog({ dog, open, onOpenChange }: EditDogDialogProps) {
   const [photoPreview, setPhotoPreview] = useState<string | null>(dog?.photo ?? null);
+  // dog가 바뀌면 사진 미리보기도 동기화
+  if (dog?.photo !== undefined && dog.photo !== photoPreview && !photoPreview?.startsWith("data:")) {
+    setPhotoPreview(dog.photo);
+  }
   const { toast } = useToast();
   const updateDog = useUpdateDog();
   const deleteDog = useDeleteDog();
 
   const form = useForm<DogInput>({
     resolver: zodResolver(dogSchema),
-    defaultValues: {
+    values: {
       name: dog?.name ?? "",
       breed: dog?.breed ?? "",
       age: dog?.age ?? (0 as any),
@@ -35,6 +39,7 @@ export function EditDogDialog({ dog, open, onOpenChange }: EditDogDialogProps) {
       weight: dog?.weight ?? (0 as any),
       neutered: dog?.neutered ?? false,
       photo: dog?.photo ?? null,
+      birthday: dog?.birthday ?? "",
     },
   });
 

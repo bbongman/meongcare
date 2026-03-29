@@ -14,6 +14,10 @@ import { eq, and, desc } from "drizzle-orm";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "10mb" }));
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
 
 // ── DB 연결 ──────────────────────────────────────────────────────────────────
 const sql = neon(process.env.DATABASE_URL);
@@ -114,6 +118,15 @@ const schedules = pgTable("schedules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const weightRecords = pgTable("weight_records", {
+  id: text("id").primaryKey(),
+  dogId: text("dog_id").notNull(),
+  userId: text("user_id").notNull(),
+  date: text("date").notNull(),
+  weight: real("weight").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 const userSettings = pgTable("user_settings", {
   userId: text("user_id").primaryKey(),
   tabOrder: jsonb("tab_order").default([]),
@@ -141,11 +154,15 @@ const aiLogs = pgTable("ai_logs", {
 });
 
 // ── JWT 시크릿 ──────────────────────────────────────────────────────────────
-const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
+if (!process.env.JWT_SECRET) {
+  console.warn("[경고] JWT_SECRET 환경변수가 없습니다. DATABASE_URL 기반 시크릿을 사용합니다. 보안을 위해 Railway에서 JWT_SECRET을 설정하세요.");
+}
+const JWT_SECRET = process.env.JWT_SECRET ||
+  crypto.createHash("sha256").update(process.env.DATABASE_URL || "meongcare-fallback-secret").digest("hex");
 
 // ── 인증 미들웨어 ────────────────────────────────────────────────────────────
 function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace("Bearer ", "");
+  const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
   if (!token) return res.status(401).json({ error: "로그인이 필요해요." });
   try {
     req.user = jwt.verify(token, JWT_SECRET);
@@ -170,7 +187,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "meong1234";
     if (existing.length === 0) {
       const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
       await db.insert(users).values({ id: crypto.randomUUID(), name: ADMIN_NAME, hash, role: "admin" });
-      console.log(`관리자 계정 생성: ${ADMIN_NAME} / ${ADMIN_PASSWORD}`);
+      console.log(`관리자 계정 생성: ${ADMIN_NAME}`);
     }
   } catch (e) {
     console.error("관리자 초기화 실패:", e.message);
@@ -229,6 +246,49 @@ app.patch("/api/auth/profile", authMiddleware, async (req, res) => {
 });
 
 // ── 관리자 API ───────────────────────────────────────────────────────────────
+app.get("/api/admin/stats", authMiddleware, adminOnly, async (req, res) => {
+  const [allUsers, allDogs, allAiLogs, allVetVisits, allVaccines] = await Promise.all([
+    db.select().from(users),
+    db.select().from(dogs),
+    db.select().from(aiLogs),
+    db.select().from(vetVisits),
+    db.select().from(vaccines),
+  ]);
+
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  const newUsersThisWeek = allUsers.filter(u => new Date(u.createdAt) >= weekAgo).length;
+
+  const aiByType = allAiLogs.reduce((acc, log) => {
+    acc[log.type] = (acc[log.type] || 0) + 1;
+    return acc;
+  }, {});
+
+  // 유저별 활동량
+  const userActivity = allUsers
+    .filter(u => u.role !== "admin")
+    .map(u => ({
+      id: u.id,
+      name: u.name,
+      createdAt: u.createdAt,
+      dogs: allDogs.filter(d => d.userId === u.id).length,
+      aiLogs: allAiLogs.filter(l => l.userId === u.id).length,
+      vetVisits: allVetVisits.filter(v => v.userId === u.id).length,
+    }))
+    .sort((a, b) => b.aiLogs - a.aiLogs);
+
+  res.json({
+    totalUsers: allUsers.filter(u => u.role !== "admin").length,
+    newUsersThisWeek,
+    totalDogs: allDogs.length,
+    totalAiLogs: allAiLogs.length,
+    aiByType,
+    totalVetVisits: allVetVisits.length,
+    totalVaccines: allVaccines.length,
+    userActivity,
+  });
+});
 app.get("/api/admin/users", authMiddleware, adminOnly, async (req, res) => {
   const rows = await db.select().from(users);
   res.json({ users: rows.map(({ hash, ...u }) => u) });
@@ -333,6 +393,36 @@ app.delete("/api/vet-visits/:id", authMiddleware, async (req, res) => {
 });
 
 // ── 예방접종 CRUD ─────────────────────────────────────────────────────────────
+// ── 체중 기록 ────────────────────────────────────────────────────────────────
+app.get("/api/weight/:dogId", authMiddleware, async (req, res) => {
+  const rows = await db.select().from(weightRecords)
+    .where(and(eq(weightRecords.dogId, req.params.dogId), eq(weightRecords.userId, req.user.id)))
+    .orderBy(weightRecords.date);
+  res.json(rows);
+});
+
+app.post("/api/weight", authMiddleware, async (req, res) => {
+  const { dogId, weight, date } = req.body;
+  if (!dogId || !weight) return res.status(400).json({ error: "필수값 누락" });
+  const today = date ?? new Date().toISOString().slice(0, 10);
+  const existing = await db.select().from(weightRecords)
+    .where(and(eq(weightRecords.dogId, dogId), eq(weightRecords.userId, req.user.id), eq(weightRecords.date, today)));
+  if (existing[0]) {
+    await db.update(weightRecords).set({ weight }).where(eq(weightRecords.id, existing[0].id));
+    const updated = await db.select().from(weightRecords).where(eq(weightRecords.id, existing[0].id));
+    return res.json(updated[0]);
+  }
+  const id = crypto.randomUUID();
+  await db.insert(weightRecords).values({ id, dogId, userId: req.user.id, date: today, weight });
+  const row = await db.select().from(weightRecords).where(eq(weightRecords.id, id));
+  res.json(row[0]);
+});
+
+app.delete("/api/weight/:id", authMiddleware, async (req, res) => {
+  await db.delete(weightRecords).where(and(eq(weightRecords.id, req.params.id), eq(weightRecords.userId, req.user.id)));
+  res.json({ ok: true });
+});
+
 app.get("/api/vaccines/:dogId", authMiddleware, async (req, res) => {
   const rows = await db.select().from(vaccines)
     .where(and(eq(vaccines.dogId, req.params.dogId), eq(vaccines.userId, req.user.id)))
@@ -478,17 +568,14 @@ app.delete("/api/schedules/:id", authMiddleware, async (req, res) => {
 });
 
 // ── 스케줄 동기화 (레거시 호환) ───────────────────────────────────────────────
-app.post("/api/schedules/sync", (req, res) => {
-  const { schedules: sched, userId } = req.body;
+app.post("/api/schedules/sync", authMiddleware, (req, res) => {
+  const { schedules: sched } = req.body;
+  const userId = req.user.id;
   if (!Array.isArray(sched)) return res.status(400).json({ error: "schedules must be array" });
-  if (userId) {
-    for (const [id, s] of serverSchedules) {
-      if (s._userId === userId) serverSchedules.delete(id);
-    }
-  } else {
-    serverSchedules.clear();
+  for (const [id, s] of serverSchedules) {
+    if (s._userId === userId) serverSchedules.delete(id);
   }
-  sched.forEach((s) => serverSchedules.set(s.id, { ...s, _userId: userId || null }));
+  sched.forEach((s) => serverSchedules.set(s.id, { ...s, _userId: userId }));
   res.json({ ok: true });
 });
 
@@ -537,17 +624,17 @@ app.get("/api/vapid-public-key", (req, res) => {
   res.json({ publicKey: vapidKeys.publicKey });
 });
 
-app.post("/api/push-subscribe", async (req, res) => {
-  const { subscription, clientId, userId } = req.body;
+app.post("/api/push-subscribe", authMiddleware, async (req, res) => {
+  const { subscription, clientId } = req.body;
+  const userId = req.user.id;
   if (!subscription || !clientId) return res.status(400).json({ error: "missing fields" });
-  subscriptions.set(clientId, { ...subscription, userId: userId || null });
-  // DB에도 저장 (upsert 방식)
+  subscriptions.set(clientId, { ...subscription, userId });
   try {
     const existing = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.clientId, clientId));
     if (existing.length > 0) {
-      await db.update(pushSubscriptions).set({ endpoint: subscription.endpoint, keys: subscription.keys, userId: userId || null }).where(eq(pushSubscriptions.clientId, clientId));
+      await db.update(pushSubscriptions).set({ endpoint: subscription.endpoint, keys: subscription.keys, userId }).where(eq(pushSubscriptions.clientId, clientId));
     } else {
-      await db.insert(pushSubscriptions).values({ id: crypto.randomUUID(), clientId, endpoint: subscription.endpoint, keys: subscription.keys, userId: userId || null });
+      await db.insert(pushSubscriptions).values({ id: crypto.randomUUID(), clientId, endpoint: subscription.endpoint, keys: subscription.keys, userId });
     }
   } catch (e) { console.error("구독 저장 실패:", e.message); }
   res.json({ ok: true });
@@ -584,7 +671,7 @@ app.post("/api/push-test", async (req, res) => {
 function sendPushToUser(userId, payload) {
   const text = JSON.stringify(payload);
   for (const [clientId, sub] of subscriptions) {
-    if (userId && sub.userId && sub.userId !== userId) continue;
+    if (!sub.userId || sub.userId !== userId) continue;
     const pushSub = { endpoint: sub.endpoint, keys: sub.keys };
     webpush.sendNotification(pushSub, text).catch((err) => {
       if (err.statusCode === 410 || err.statusCode === 404) subscriptions.delete(clientId);
@@ -597,6 +684,11 @@ function checkSchedules() {
   const now = new Date();
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const todayStr = now.toISOString().slice(0, 10);
+
+  // 어제 이전 항목 정리 (메모리 누수 방지)
+  for (const [key, val] of firedThisMinute) {
+    if (typeof val === "string" && val.length === 10 && val < todayStr) firedThisMinute.delete(key);
+  }
 
   for (const [id, s] of serverSchedules) {
     if (!s.enabled) continue;
@@ -632,7 +724,7 @@ const nowMs = new Date();
 setTimeout(() => { checkSchedules(); setInterval(checkSchedules, 60_000); }, (60 - nowMs.getSeconds()) * 1000 - nowMs.getMilliseconds());
 
 // ── AI 분석 API ────────────────────────────────────────────────────────────────
-app.post("/api/analyze", async (req, res) => {
+app.post("/api/analyze", authMiddleware, async (req, res) => {
   const { dog, symptoms } = req.body;
   if (!symptoms?.trim()) return res.status(400).json({ error: "증상을 입력해주세요." });
   try {
@@ -647,7 +739,8 @@ app.post("/api/analyze", async (req, res) => {
     if (!jsonMatch) throw new Error("AI 응답 파싱 실패");
     res.json(JSON.parse(jsonMatch[0]));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err.message);
+    res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." });
   }
 });
 
@@ -674,7 +767,7 @@ async function callHfAudio(audioBuffer, mimeType) {
   return null;
 }
 
-app.post("/api/classify-audio", async (req, res) => {
+app.post("/api/classify-audio", authMiddleware, async (req, res) => {
   const { audioBase64, mimeType, dog, context } = req.body;
   if (!audioBase64) return res.status(400).json({ error: "오디오가 없습니다." });
   const dogInfo = dog ? `이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살` : "강아지 정보 없음";
@@ -692,10 +785,10 @@ app.post("/api/classify-audio", async (req, res) => {
     const result = JSON.parse(jsonMatch[0]);
     result.rawLabels = topLabels;
     res.json(result);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
 });
 
-app.post("/api/translate", async (req, res) => {
+app.post("/api/translate", authMiddleware, async (req, res) => {
   const { dog, barkType, context } = req.body;
   if (!barkType || !context) return res.status(400).json({ error: "짖음 유형과 상황을 선택해주세요." });
   const dogInfo = dog ? `이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살` : "강아지 정보 없음";
@@ -708,10 +801,10 @@ app.post("/api/translate", async (req, res) => {
     const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("파싱 실패");
     res.json(JSON.parse(jsonMatch[0]));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
 });
 
-app.post("/api/analyze-product", async (req, res) => {
+app.post("/api/analyze-product", authMiddleware, async (req, res) => {
   const { dog, imageBase64, mediaType } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "이미지를 업로드해주세요." });
   const dogInfo = dog ? `강아지: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살, 체중: ${dog.weight}kg` : "";
@@ -726,10 +819,10 @@ app.post("/api/analyze-product", async (req, res) => {
     const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("파싱 실패");
     res.json(JSON.parse(jsonMatch[0]));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
 });
 
-app.post("/api/parse-receipt", async (req, res) => {
+app.post("/api/parse-receipt", authMiddleware, async (req, res) => {
   const { imageBase64, mediaType, dog } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "이미지를 업로드해주세요." });
   const dogInfo = dog ? `\n보호자 강아지 정보: 이름: ${dog.name}, 견종: ${dog.breed}, 나이: ${dog.age}살, 체중: ${dog.weight}kg` : "";
@@ -744,8 +837,174 @@ app.post("/api/parse-receipt", async (req, res) => {
     const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("파싱 실패");
     res.json(JSON.parse(jsonMatch[0]));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
 });
+
+// ── 행동/훈련 상담 ────────────────────────────────────────────────────────────
+app.post("/api/ask-behavior", authMiddleware, async (req, res) => {
+  const { question, dog } = req.body;
+  if (!question?.trim()) return res.status(400).json({ error: "질문을 입력해주세요." });
+  const dogInfo = dog ? `강아지 정보: 이름 ${dog.name}, 견종 ${dog.breed}, 나이 ${dog.age}살, 체중 ${dog.weight ? dog.weight + "kg" : "미입력"}, 성별 ${dog.gender === "male" ? "수컷" : "암컷"}${dog.neutered ? " (중성화)" : ""}` : "";
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001", max_tokens: 1200,
+      system: "당신은 전문 반려견 훈련사이자 행동 전문가입니다. 반드시 순수한 JSON만 출력하세요. 마크다운, 설명, 코드블록 없이 JSON 객체만 출력합니다.",
+      messages: [{ role: "user", content: `${dogInfo ? dogInfo + "\n\n" : ""}질문: ${question.trim()}\n\n아래 JSON 형식으로만 응답하세요 (steps는 최대 3개):\n{"category":"행동문제","summary":"한 줄 요약","cause":"원인 설명","steps":[{"step":1,"title":"단계명","desc":"설명"}],"tips":["팁1","팁2"],"caution":"주의사항"}` }],
+    });
+    const text = message.content[0].text.trim();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("AI 응답 파싱 실패");
+    const result = JSON.parse(jsonMatch[0]);
+    // ai_logs에 저장
+    await db.insert(aiLogs).values({ id: crypto.randomUUID(), userId: req.user.id, type: "behavior", dogName: dog?.name ?? "미등록", input: question.trim(), result });
+    res.json(result);
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
+});
+
+// ── 음식 독성 체크 ────────────────────────────────────────────────────────────
+app.post("/api/check-food", authMiddleware, async (req, res) => {
+  const { food, dogName } = req.body;
+  if (!food?.trim()) return res.status(400).json({ error: "음식 이름을 입력해주세요." });
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001", max_tokens: 500,
+      messages: [{ role: "user", content: `강아지${dogName ? ` (이름: ${dogName})` : ""}가 "${food}"를 먹어도 되는지 판단해주세요.\n\n반드시 다음 JSON 형식으로만 응답하세요:\n{\n  "food": "음식/식재료 이름",\n  "safety": "safe" 또는 "caution" 또는 "danger",\n  "safetyLabel": "안전해요" 또는 "주의 필요" 또는 "위험해요",\n  "reason": "핵심 이유 1-2문장",\n  "symptoms": ["섭취 시 나타날 수 있는 증상 (danger/caution만)"],\n  "tip": "보호자에게 전달할 팁 한 줄"\n}` }],
+    });
+    const jsonMatch = message.content[0].text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("파싱 실패");
+    const result = JSON.parse(jsonMatch[0]);
+    // ai_logs에 저장
+    await db.insert(aiLogs).values({ id: crypto.randomUUID(), userId: req.user.id, type: "food", dogName: dogName ?? "미등록", input: food.trim(), result });
+    res.json(result);
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
+});
+
+// ── 건강 리포트 HTML ────────────────────────────────────────────────────────────
+function escapeHtml(str) {
+  return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+app.get("/api/report/:dogId", authMiddleware, async (req, res) => {
+  const { dogId } = req.params;
+  try {
+    const [dogRows, logRows, vaccineRows, vetRows] = await Promise.all([
+      db.select().from(dogs).where(and(eq(dogs.id, dogId), eq(dogs.userId, req.user.id))),
+      db.select().from(dailyLogs).where(and(eq(dailyLogs.dogId, dogId), eq(dailyLogs.userId, req.user.id))).orderBy(dailyLogs.date),
+      db.select().from(vaccines).where(and(eq(vaccines.dogId, dogId), eq(vaccines.userId, req.user.id))).orderBy(vaccines.date),
+      db.select().from(vetVisits).where(eq(vetVisits.userId, req.user.id)).orderBy(vetVisits.visitDate),
+    ]);
+    if (!dogRows[0]) return res.status(404).json({ error: "강아지를 찾을 수 없어요." });
+    const dog = dogRows[0];
+    const recentLogs = logRows.slice(-30);
+    const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
+    const ENERGY_LABEL = ["축처짐", "보통", "활발"];
+    const today = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+    const dn = escapeHtml(dog.name), db_ = escapeHtml(dog.breed);
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>${dn} 건강 리포트</title>
+<style>
+  body { font-family: 'Apple SD Gothic Neo', sans-serif; padding: 32px; max-width: 720px; margin: 0 auto; color: #111; }
+  h1 { font-size: 22px; margin-bottom: 4px; } .sub { color: #888; font-size: 13px; margin-bottom: 24px; }
+  h2 { font-size: 15px; border-bottom: 2px solid #111; padding-bottom: 6px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  th { background: #f5f5f5; padding: 8px; text-align: left; font-weight: 600; }
+  td { padding: 7px 8px; border-bottom: 1px solid #eee; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+  .safe { background: #dcfce7; color: #166534; } .caution { background: #fef9c3; color: #854d0e; } .danger { background: #fee2e2; color: #991b1b; }
+  @media print { body { padding: 16px; } }
+</style>
+</head>
+<body>
+<h1>${dn} 건강 리포트</h1>
+<div class="sub">출력일: ${today} | 견종: ${db_} | 나이: ${dog.age}살 | 체중: ${dog.weight ? dog.weight + "kg" : "미입력"} | 성별: ${dog.gender === "male" ? "수컷" : "암컷"}${dog.neutered ? " (중성화)" : ""}</div>
+
+<h2>최근 30일 일일 건강 기록</h2>
+<table>
+  <tr><th>날짜</th><th>식사</th><th>기력</th><th>산책</th><th>배변</th><th>소변</th><th>메모</th></tr>
+  ${recentLogs.reverse().map(l => `<tr><td>${escapeHtml(l.date)}</td><td>${MEAL_LABEL[l.meal]}</td><td>${ENERGY_LABEL[l.energy]}</td><td>${l.walk ? "O" : "-"}</td><td>${l.poop ? "O" : "-"}</td><td>${l.pee ? "O" : "-"}</td><td>${escapeHtml(l.memo || "")}</td></tr>`).join("")}
+  ${recentLogs.length === 0 ? '<tr><td colspan="7" style="text-align:center;color:#888">기록 없음</td></tr>' : ""}
+</table>
+
+<h2>예방접종 이력</h2>
+<table>
+  <tr><th>백신명</th><th>접종일</th><th>병원</th><th>다음 접종</th></tr>
+  ${vaccineRows.map(v => `<tr><td>${escapeHtml(v.vaccineName)}</td><td>${escapeHtml(v.date)}</td><td>${escapeHtml(v.hospitalName || "-")}</td><td>${escapeHtml(v.nextDate || "-")}</td></tr>`).join("")}
+  ${vaccineRows.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:#888">기록 없음</td></tr>' : ""}
+</table>
+
+<h2>검진 기록</h2>
+<table>
+  <tr><th>날짜</th><th>병원</th><th>진단</th><th>금액</th></tr>
+  ${vetRows.map(v => `<tr><td>${escapeHtml(v.visitDate)}</td><td>${escapeHtml(v.hospitalName)}</td><td>${escapeHtml(v.diagnosis || "-")}</td><td>${v.totalPrice ? v.totalPrice.toLocaleString() + "원" : "-"}</td></tr>`).join("")}
+  ${vetRows.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:#888">기록 없음</td></tr>' : ""}
+</table>
+
+<script>window.onload = () => window.print();</script>
+</body>
+</html>`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
+});
+
+// ── 자동 푸시 알림 (생일 + 예방약) ────────────────────────────────────────────
+async function sendAutoPushNotifications() {
+  const today = new Date();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  const isFirstOfMonth = dd === "01";
+
+  try {
+    // 생일 알림: birthday 필드가 --MM-DD 또는 YYYY-MM-DD 형식
+    const allDogs = await db.select().from(dogs);
+    for (const dog of allDogs) {
+      if (!dog.birthday) continue;
+      const parts = dog.birthday.split("-");
+      const dogMM = parts[parts.length - 2];
+      const dogDD = parts[parts.length - 1];
+      if (dogMM === mm && dogDD === dd) {
+        const userSubs = [...subscriptions.entries()].filter(([, s]) => s.userId === dog.userId);
+        for (const [, sub] of userSubs) {
+          try {
+            await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys },
+              JSON.stringify({ title: `${dog.name} 생일이에요 🎂`, body: "오늘은 특별히 좋아하는 간식을 챙겨주세요!", icon: "/icon-192.png" }));
+          } catch {}
+        }
+      }
+    }
+
+    // 예방약 알림: 매달 1일에 당월 예방약 미투약 강아지 보호자에게 알림
+    if (isFirstOfMonth) {
+      const yearMonth = `${today.getFullYear()}-${mm}`;
+      const doneMeds = await db.select().from(preventionMeds).where(and(eq(preventionMeds.yearMonth, yearMonth), eq(preventionMeds.done, true)));
+      const doneSet = new Set(doneMeds.map(m => `${m.dogId}-${m.type}`));
+      const MED_TYPES = ["심장사상충", "벼룩/진드기", "내부기생충"];
+      const notifiedUsers = new Set();
+      for (const dog of allDogs) {
+        if (notifiedUsers.has(dog.userId)) continue;
+        const hasMissing = MED_TYPES.some(t => !doneSet.has(`${dog.id}-${t}`));
+        if (!hasMissing) continue;
+        const userSubs = [...subscriptions.entries()].filter(([, s]) => s.userId === dog.userId);
+        for (const [, sub] of userSubs) {
+          try {
+            await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys },
+              JSON.stringify({ title: "이번 달 예방약 체크!", body: `${dog.name}의 심장사상충/벼룩 예방약을 확인해주세요 💊`, icon: "/icon-192.png" }));
+            notifiedUsers.add(dog.userId);
+          } catch {}
+        }
+      }
+    }
+  } catch (err) { console.error("자동 알림 오류:", err.message); }
+}
+
+// 매일 오전 9시 체크 (서버 시작 후 매 시간 확인, 9시에만 실행)
+setInterval(() => {
+  const h = new Date().getHours();
+  if (h === 9) sendAutoPushNotifications();
+}, 1000 * 60 * 60);
 
 // ── 정적 파일 서빙 ────────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, "dist/public");

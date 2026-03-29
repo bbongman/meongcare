@@ -2,23 +2,26 @@ import { useState } from "react";
 import { Layout } from "@/components/layout";
 import { TranslatorTab } from "@/components/health/TranslatorTab";
 import { ProductTab } from "@/components/health/ProductTab";
+import { FoodCheckTab } from "@/components/health/FoodCheckTab";
+import { BehaviorTab } from "@/components/health/BehaviorTab";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Tab = "translator" | "product";
+type Tab = "behavior" | "food" | "product" | "translator";
 
-const TABS: { id: Tab; label: string; emoji: string; desc: string }[] = [
-  { id: "product", label: "제품 분석", emoji: "🔍", desc: "용품 사진으로 성분 확인" },
-  { id: "translator", label: "강아지 번역기", emoji: "🐾", desc: "짖음을 말로 번역" },
+const TABS: { id: Tab; label: string; emoji: string }[] = [
+  { id: "behavior", label: "행동 & 훈련", emoji: "🐕‍🦺" },
+  { id: "food", label: "음식 체크", emoji: "🍖" },
+  { id: "product", label: "제품 분석", emoji: "🔍" },
+  { id: "translator", label: "번역기", emoji: "🐾" },
 ];
 
 export default function AiTools() {
-  const [activeTab, setActiveTab] = useState<Tab>("product");
+  const [activeTab, setActiveTab] = useState<Tab>("behavior");
 
   return (
     <Layout>
       <div className="px-5 pt-6 pb-4">
-        {/* Header */}
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center">
             <span className="text-xl">✨</span>
@@ -29,7 +32,6 @@ export default function AiTools() {
           </div>
         </div>
 
-        {/* 탭 */}
         <div className="flex gap-1.5 mb-5 overflow-x-auto pb-1">
           {TABS.map((tab) => (
             <button
@@ -47,7 +49,6 @@ export default function AiTools() {
           ))}
         </div>
 
-        {/* 컨텐츠 */}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -56,8 +57,10 @@ export default function AiTools() {
             exit={{ opacity: 0, x: -10 }}
             transition={{ duration: 0.15 }}
           >
-            {activeTab === "translator" && <TranslatorTab />}
+            {activeTab === "behavior" && <BehaviorTab />}
+            {activeTab === "food" && <FoodCheckTab />}
             {activeTab === "product" && <ProductTab />}
+            {activeTab === "translator" && <TranslatorTab />}
           </motion.div>
         </AnimatePresence>
       </div>

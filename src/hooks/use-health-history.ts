@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 
-export type HistoryType = "consultation" | "translation" | "product";
+export type HistoryType = "consultation" | "translation" | "product" | "behavior" | "food";
 
 export interface ConsultationResult {
   urgency: "home" | "tomorrow" | "now";
@@ -32,7 +32,25 @@ export interface ProductResult {
   ratingReason: string;
 }
 
-export type HistoryResult = ConsultationResult | TranslationResult | ProductResult;
+export interface BehaviorResult {
+  category: string;
+  summary: string;
+  cause: string;
+  steps: { step: number; title: string; desc: string }[];
+  tips: string[];
+  caution: string;
+}
+
+export interface FoodResult {
+  food: string;
+  safety: "safe" | "caution" | "danger";
+  safetyLabel: string;
+  reason: string;
+  symptoms: string[];
+  tip: string;
+}
+
+export type HistoryResult = ConsultationResult | TranslationResult | ProductResult | BehaviorResult | FoodResult;
 
 export interface HistoryItem {
   id: string;
