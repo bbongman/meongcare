@@ -156,6 +156,7 @@ export default function Schedule() {
     updateSchedule.mutate({
       id: editTarget.id,
       updates: {
+        type: selectedType,
         title: finalTitle,
         time,
         repeat,
@@ -473,6 +474,27 @@ export default function Schedule() {
             <DialogTitle className="text-xl font-bold">스케줄 수정</DialogTitle>
           </DialogHeader>
           <div className="space-y-5 px-6 pb-2 overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
+            {/* 알림 종류 변경 */}
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-muted-foreground">알림 종류</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {TYPES.map((t) => (
+                  <motion.button
+                    key={t.type}
+                    onClick={() => setSelectedType(t.type)}
+                    whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-colors",
+                      selectedType === t.type
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "border-border text-muted-foreground hover:border-primary/40"
+                    )}
+                  >
+                    <span>{t.emoji}</span>{t.label}
+                  </motion.button>
+                ))}
+              </div>
+            </div>
             {dogs.length > 0 && (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-muted-foreground">반려견 선택 (선택사항)</Label>
@@ -485,7 +507,7 @@ export default function Schedule() {
                 </Select>
               </div>
             )}
-            {editTarget?.type === "medicine" && (
+            {selectedType === "medicine" && (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-muted-foreground">약 이름</Label>
                 <Input placeholder="예: 심장사상충 예방약" value={medicineName} onChange={(e) => setMedicineName(e.target.value)} className="rounded-xl h-11" />
@@ -495,19 +517,19 @@ export default function Schedule() {
               <Label className="text-sm font-bold text-muted-foreground">알림 제목</Label>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} className="rounded-xl h-11" />
             </div>
-            {editTarget?.type !== "vaccine" && (
+            {selectedType !== "vaccine" && (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-muted-foreground">알림 시간</Label>
                 <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-xl h-11" style={{ fontSize: 16 }} />
               </div>
             )}
-            {editTarget?.type === "vaccine" && (
+            {selectedType === "vaccine" && (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-muted-foreground">예방접종 날짜</Label>
                 <Input type="date" value={vaccineDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setVaccineDate(e.target.value)} className="rounded-xl h-11" style={{ fontSize: 16 }} />
               </div>
             )}
-            {editTarget?.type !== "vaccine" && (
+            {selectedType !== "vaccine" && (
               <div className="space-y-2">
                 <Label className="text-sm font-bold text-muted-foreground">반복</Label>
                 <Select value={repeat} onValueChange={(v) => setRepeat(v as RepeatType)}>

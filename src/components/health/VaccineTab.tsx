@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useDogs } from "@/hooks/use-dogs";
 import { useVaccines } from "@/hooks/use-vaccines";
+import { useToast } from "@/hooks/use-toast";
 import { DogSelector } from "@/components/health/DogSelector";
 import { Trash2, Plus, Calendar, ChevronRight, Syringe } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,7 @@ export function VaccineTab() {
   const activeDogId = selectedDogId ?? dogs?.[0]?.id ?? "";
   const { records, addRecord, removeRecord } = useVaccines(activeDogId);
 
+  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -65,6 +67,7 @@ export function VaccineTab() {
     addRecord({ ...form });
     setForm(EMPTY_FORM);
     setShowForm(false);
+    toast({ title: "예방접종 기록이 저장됐어요!" });
   }
 
   if (!dogs || dogs.length === 0) {

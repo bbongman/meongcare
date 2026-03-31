@@ -55,7 +55,7 @@ function TodayCheckButton({ dogId, onClick, hasLog }: { dogId: string; onClick: 
   );
 }
 
-function TodayStatusCard({ dogId, onEdit }: { dogId: string; onEdit: () => void }) {
+function TodayStatusCard({ dogId, dogName, onEdit }: { dogId: string; dogName?: string; onEdit: () => void }) {
   const { todayLog, recentLogs } = useDailyLog(dogId);
 
   if (!todayLog) return null;
@@ -82,7 +82,7 @@ function TodayStatusCard({ dogId, onEdit }: { dogId: string; onEdit: () => void 
     >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold text-foreground">오늘 컨디션</p>
+          <p className="text-sm font-bold text-foreground">{dogName ? `${dogName}의 오늘 컨디션` : "오늘 컨디션"}</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">{new Date().toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" })}</p>
         </div>
         <button
@@ -819,11 +819,11 @@ export default function Home() {
               </div>
             )}
 
-            {/* 오늘 컨디션 카드 */}
+            {/* 오늘 컨디션 카드 — 모든 강아지 */}
             <AnimatePresence>
-              {firstDogTodayLog && (
-                <TodayStatusCard dogId={dogs[0].id} onEdit={() => setDailyCheckOpen(true)} />
-              )}
+              {dogs.map((dog) => (
+                <TodayStatusCard key={dog.id} dogId={dog.id} dogName={dogs.length > 1 ? dog.name : undefined} onEdit={() => setDailyCheckOpen(true)} />
+              ))}
             </AnimatePresence>
 
             {/* Quick Actions */}
