@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Check, Stethoscope, ChevronRight, Download, Pencil } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Stethoscope, ChevronRight, Pencil } from "lucide-react";
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip } from "recharts";
-import { userKey } from "@/lib/user-storage";
+import { ProfileDialog } from "@/components/profile-dialog";
+import { InstallGuideDialog } from "@/components/install-guide-dialog";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
 import { useAuth } from "@/hooks/use-auth";
@@ -473,7 +474,9 @@ function BirthdayBanner({ dogs }: { dogs: Dog[] }) {
 function DailyReminderBanner() {
   const { data: schedules = [] } = useSchedules();
   const addSchedule = useAddSchedule();
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem("daily_reminder_dismissed") === "1");
+  const { user } = useAuth();
+  const dismissKey = `meongcare_daily_reminder_dismissed_${user?.id}`;
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(dismissKey) === "1");
 
   const hasReminder = schedules.some((s) => s.title.includes("건강 체크") && s.repeat === "daily");
   if (hasReminder || dismissed) return null;
@@ -486,7 +489,7 @@ function DailyReminderBanner() {
       repeat: "daily",
       enabled: true,
     }, {
-      onSuccess: () => { syncSchedulesToServer(); setDismissed(true); localStorage.setItem("daily_reminder_dismissed", "1"); },
+      onSuccess: () => { syncSchedulesToServer(); setDismissed(true); localStorage.setItem(dismissKey, "1"); },
     });
   }
 
@@ -495,126 +498,10 @@ function DailyReminderBanner() {
       <Bell className="w-4 h-4 text-violet-500 shrink-0" />
       <p className="text-xs text-violet-700 flex-1 font-medium">매일 저녁 8시에 건강 체크 알림 받기</p>
       <div className="flex gap-1.5 shrink-0">
-        <button onClick={() => { setDismissed(true); localStorage.setItem("daily_reminder_dismissed", "1"); }} className="text-xs text-muted-foreground px-2 py-1 rounded-lg hover:bg-white/60">나중에</button>
+        <button onClick={() => { setDismissed(true); localStorage.setItem(dismissKey, "1"); }} className="text-xs text-muted-foreground px-2 py-1 rounded-lg hover:bg-white/60">나중에</button>
         <button onClick={setup} disabled={addSchedule.isPending} className="text-xs font-bold text-white bg-violet-500 px-3 py-1 rounded-lg hover:bg-violet-600 transition-colors">설정</button>
       </div>
     </motion.div>
-  );
-}
-
-function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { user, updateProfile } = useAuth();
-  const [gender, setGender] = useState(user?.gender || "");
-  const [phone, setPhone] = useState(user?.phone || "");
-  const [memo, setMemo] = useState(user?.memo || "");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await updateProfile({ gender: gender || undefined, phone: phone || undefined, memo: memo || undefined });
-      setSaved(true);
-      setTimeout(() => { setSaved(false); onOpenChange(false); }, 1000);
-    } catch { }
-    setSaving(false);
-  }
-
-  function handleExport() {
-    const baseKeys = [
-      "meongcare_dogs",
-      "meongcare_daily_logs",
-      "meongcare_schedules",
-      "meongcare_vet_visits",
-      "meongcare_weight_history",
-    ];
-    const data: Record<string, unknown> = { exportedAt: new Date().toISOString() };
-    baseKeys.forEach((base) => {
-      const val = localStorage.getItem(userKey(base));
-      if (val) {
-        try { data[base] = JSON.parse(val); } catch { data[base] = val; }
-      }
-    });
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `멍케어_백업_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-3xl max-w-sm mx-4 p-6">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold">보호자 정보</DialogTitle>
-        </DialogHeader>
-        <p className="text-xs text-muted-foreground -mt-2">나중에 병원 방문 시 반려견 정보와 함께 전달할 수 있어요</p>
-
-        <div className="space-y-4 py-2">
-          <div>
-            <p className="text-sm font-semibold text-muted-foreground mb-2">이름</p>
-            <p className="text-sm font-bold text-foreground bg-secondary/50 px-4 py-3 rounded-xl">{user?.name}</p>
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold text-muted-foreground mb-2">성별</p>
-            <div className="flex gap-3">
-              <button type="button" onClick={() => setGender("male")}
-                className={cn("flex-1 h-11 rounded-xl font-bold text-sm transition-all border-2",
-                  gender === "male" ? "bg-blue-50 border-blue-500 text-blue-700" : "bg-card border-border/50 text-muted-foreground")}>
-                남성
-              </button>
-              <button type="button" onClick={() => setGender("female")}
-                className={cn("flex-1 h-11 rounded-xl font-bold text-sm transition-all border-2",
-                  gender === "female" ? "bg-pink-50 border-pink-500 text-pink-700" : "bg-card border-border/50 text-muted-foreground")}>
-                여성
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold text-muted-foreground mb-2">연락처 <span className="font-normal">(선택)</span></p>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="010-0000-0000"
-              className="w-full h-11 px-4 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:border-primary"
-            />
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold text-muted-foreground mb-2">메모 <span className="font-normal">(선택)</span></p>
-            <textarea
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="알레르기, 특이사항 등"
-              rows={2}
-              className="w-full px-4 py-3 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:border-primary resize-none"
-            />
-          </div>
-        </div>
-
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full h-11 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-        >
-          {saved ? <><Check className="w-4 h-4" /> 저장 완료</> : saving ? "저장 중..." : "저장하기"}
-        </button>
-
-        <button
-          onClick={handleExport}
-          className="w-full h-10 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2"
-        >
-          <Download className="w-4 h-4" /> 데이터 내보내기 (JSON 백업)
-        </button>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -625,6 +512,14 @@ export default function Home() {
   const [editingDog, setEditingDog] = useState<Dog | null>(null);
   const [dailyCheckOpen, setDailyCheckOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+
+  function handleFirstDogAdded() {
+    if (!localStorage.getItem("pwa_install_prompted")) {
+      setShowInstallGuide(true);
+      localStorage.setItem("pwa_install_prompted", "1");
+    }
+  }
   const firstDogId = dogs?.[0]?.id ?? "";
   const { todayLog: firstDogTodayLog } = useDailyLog(firstDogId);
 
@@ -632,6 +527,7 @@ export default function Home() {
 
   return (
     <Layout>
+      <InstallGuideDialog open={showInstallGuide} onClose={() => setShowInstallGuide(false)} />
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
       <EditDogDialog
         dog={editingDog}
@@ -680,7 +576,7 @@ export default function Home() {
               멍케어와 함께 사랑스러운 반려견의<br/>건강을 체계적으로 관리해보세요.
             </p>
             
-            <AddDogDialog>
+            <AddDogDialog onSuccess={handleFirstDogAdded}>
               <Button className="h-14 px-8 rounded-2xl text-lg font-bold shadow-lg shadow-primary/30 hover:-translate-y-1 transition-transform bg-gradient-to-br from-primary to-orange-500 w-full max-w-[280px]">
                 <Plus className="w-6 h-6 mr-2 stroke-[3px]" />
                 반려견 추가하기

@@ -23,14 +23,36 @@ export function DogFormFields({ form, photoPreview, onPhotoChange }: DogFormFiel
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  const syncingRef = useRef(false);
+
   const birthday = form.watch("birthday");
+  const age = form.watch("age");
+
+  // 생일 → 나이 자동 계산
   useEffect(() => {
+    if (syncingRef.current) return;
     if (!birthday) return;
     const birthDate = new Date(birthday + "T00:00:00");
     if (isNaN(birthDate.getTime())) return;
     const ageYears = Math.floor((Date.now() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    if (ageYears >= 0) form.setValue("age", ageYears, { shouldValidate: false });
+    if (ageYears >= 0) {
+      syncingRef.current = true;
+      form.setValue("age", ageYears, { shouldValidate: false });
+      setTimeout(() => { syncingRef.current = false; }, 0);
+    }
   }, [birthday]);
+
+  // 나이 → 생일 자동 계산 (1월 1일 기준)
+  useEffect(() => {
+    if (syncingRef.current) return;
+    const ageNum = Number(age);
+    if (!ageNum || ageNum <= 0 || ageNum > 30) return;
+    const year = new Date().getFullYear() - ageNum;
+    const newBirthday = `${year}-01-01`;
+    syncingRef.current = true;
+    form.setValue("birthday", newBirthday, { shouldValidate: false });
+    setTimeout(() => { syncingRef.current = false; }, 0);
+  }, [age]);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

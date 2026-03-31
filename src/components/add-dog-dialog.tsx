@@ -17,9 +17,10 @@ import { DogFormFields } from "@/components/dog-form-fields";
 
 interface AddDogDialogProps {
   children: React.ReactNode;
+  onSuccess?: () => void;
 }
 
-export function AddDogDialog({ children }: AddDogDialogProps) {
+export function AddDogDialog({ children, onSuccess }: AddDogDialogProps) {
   const [open, setOpen] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const { toast } = useToast();
@@ -48,6 +49,7 @@ export function AddDogDialog({ children }: AddDogDialogProps) {
           title: "반려견 등록 완료!",
           description: `${data.name}의 프로필이 추가되었습니다.`,
         });
+        onSuccess?.();
       },
       onError: () => {
         toast({ title: "등록 실패", description: "다시 시도해주세요.", variant: "destructive" });

@@ -24,10 +24,10 @@ interface Place {
 type Status = "idle" | "loading-sdk" | "loading-location" | "loading-search" | "ready" | "error";
 
 const CATEGORIES = [
-  { label: "동물병원", emoji: "🏥", keyword: "동물병원" },
-  { label: "애견미용", emoji: "✂️", keyword: "애견미용" },
-  { label: "펫호텔", emoji: "🏨", keyword: "펫호텔" },
-  { label: "애견카페", emoji: "☕", keyword: "애견카페" },
+  { label: "동물병원", emoji: "🏥", keywords: ["동물병원"] },
+  { label: "애견미용", emoji: "✂️", keywords: ["애견미용"] },
+  { label: "펫호텔", emoji: "🏨", keywords: ["펫호텔"] },
+  { label: "애견카페", emoji: "☕", keywords: ["애견카페", "반려동물카페", "펫카페", "도그카페"] },
 ];
 
 function waitForKakao(timeout = 8000): Promise<void> {
@@ -58,7 +58,7 @@ export default function Map() {
   const [errorMsg, setErrorMsg] = useState("");
   const [locationDenied, setLocationDenied] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
-  const [activeCategory, setActiveCategory] = useState("동물병원");
+  const [activeCategory, setActiveCategory] = useState<string>("동물병원");
   const [isSearching, setIsSearching] = useState(false);
   const [radius, setRadius] = useState(3000);
   const [manualQuery, setManualQuery] = useState("");
@@ -81,7 +81,7 @@ export default function Map() {
 
         setStatus("loading-search");
         initMap(coords.lat, coords.lng);
-        await doSearch(coords.lat, coords.lng, "동물병원");
+        await doSearch(coords.lat, coords.lng, ["동물병원"]);
         if (cancelled) return;
 
         setStatus("ready");
@@ -99,9 +99,11 @@ export default function Map() {
   useEffect(() => {
     if (status !== "ready" || !coordsRef.current) return;
     const { lat, lng } = coordsRef.current;
+    const cat = CATEGORIES.find(c => c.label === activeCategory);
+    const keywords = cat?.keywords ?? [activeCategory];
     setIsSearching(true);
     setSelectedId(null);
-    doSearch(lat, lng, activeCategory).finally(() => setIsSearching(false));
+    doSearch(lat, lng, keywords).finally(() => setIsSearching(false));
   }, [activeCategory, radius]);
 
   function getCurrentLocation(): Promise<{ lat: number; lng: number }> {
@@ -138,22 +140,15 @@ export default function Map() {
     new maps.Marker({ map, position: center, image: myMarkerImg, title: "내 위치" });
   }
 
-  function doSearch(lat: number, lng: number, keyword: string): Promise<void> {
-    if (!window.kakao?.maps) return Promise.resolve();
+  function searchKeyword(lat: number, lng: number, keyword: string): Promise<Place[]> {
+    if (!window.kakao?.maps) return Promise.resolve([]);
     const { maps } = window.kakao;
     const ps = new maps.services.Places();
-    return new Promise<void>((resolve) => {
+    return new Promise<Place[]>((resolve) => {
       ps.keywordSearch(
         keyword,
         (data: Place[], st: string) => {
-          if (st === maps.services.Status.OK) {
-            setPlaces(data.slice(0, 10));
-            addMarkers(data.slice(0, 10));
-          } else {
-            setPlaces([]);
-            addMarkers([]);
-          }
-          resolve();
+          resolve(st === maps.services.Status.OK ? data : []);
         },
         {
           location: new maps.LatLng(lat, lng),
@@ -162,6 +157,24 @@ export default function Map() {
         }
       );
     });
+  }
+
+  async function doSearch(lat: number, lng: number, keywords: string[]): Promise<void> {
+    const results = await Promise.all(keywords.map(kw => searchKeyword(lat, lng, kw)));
+    const seen = new Set<string>();
+    const merged: Place[] = [];
+    for (const list of results) {
+      for (const place of list) {
+        if (!seen.has(place.id)) {
+          seen.add(place.id);
+          merged.push(place);
+        }
+      }
+    }
+    merged.sort((a, b) => parseInt(a.distance || "0") - parseInt(b.distance || "0"));
+    const top = merged.slice(0, 15);
+    setPlaces(top);
+    addMarkers(top);
   }
 
   function doManualSearch(query: string) {
@@ -214,7 +227,7 @@ export default function Map() {
     status === "loading-location" ? "내 위치 확인 중..." :
     `주변 ${activeCategory} 검색 중...`;
 
-  const activeCat = CATEGORIES.find(c => c.keyword === activeCategory);
+  const activeCat = CATEGORIES.find(c => c.label === activeCategory);
 
   return (
     <Layout>
@@ -240,10 +253,10 @@ export default function Map() {
             {CATEGORIES.map((cat) => (
               <button
                 key={cat.label}
-                onClick={() => setActiveCategory(cat.keyword)}
+                onClick={() => setActiveCategory(cat.label)}
                 className={cn(
                   "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold shrink-0 transition-all duration-200 border",
-                  activeCategory === cat.keyword
+                  activeCategory === cat.label
                     ? "bg-primary text-white border-primary shadow-sm"
                     : "bg-card text-foreground border-border/60 hover:border-primary/40"
                 )}

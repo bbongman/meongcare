@@ -723,6 +723,19 @@ function checkSchedules() {
 const nowMs = new Date();
 setTimeout(() => { checkSchedules(); setInterval(checkSchedules, 60_000); }, (60 - nowMs.getSeconds()) * 1000 - nowMs.getMilliseconds());
 
+// ── 데이터 백업 API ──────────────────────────────────────────────────────────
+app.get("/api/backup", authMiddleware, async (req, res) => {
+  const [userDogs, userLogs, userSchedules, userVetVisits, userAiLogs, userWeights] = await Promise.all([
+    db.select().from(dogs).where(eq(dogs.userId, req.user.id)),
+    db.select().from(dailyLogs).where(eq(dailyLogs.userId, req.user.id)),
+    db.select().from(schedules).where(eq(schedules.userId, req.user.id)),
+    db.select().from(vetVisits).where(eq(vetVisits.userId, req.user.id)),
+    db.select().from(aiLogs).where(eq(aiLogs.userId, req.user.id)),
+    db.select().from(weightRecords).where(eq(weightRecords.userId, req.user.id)),
+  ]);
+  res.json({ exportedAt: new Date().toISOString(), dogs: userDogs, dailyLogs: userLogs, schedules: userSchedules, vetVisits: userVetVisits, aiLogs: userAiLogs, weightRecords: userWeights });
+});
+
 // ── AI 분석 API ────────────────────────────────────────────────────────────────
 app.post("/api/analyze", authMiddleware, async (req, res) => {
   const { dog, symptoms } = req.body;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Dot, ReferenceLine } from "recharts";
 import { useDogs } from "@/hooks/use-dogs";
+import { useAuth } from "@/hooks/use-auth";
 import { useDailyLog } from "@/hooks/use-daily-log";
 import { useWeightHistory } from "@/hooks/use-weight-history";
 import { useVetVisits } from "@/hooks/use-vet-visits";
@@ -44,7 +45,8 @@ function SummaryCard({ title, value, sub, color }: { title: string; value: strin
 function WeightSection({ dogId }: { dogId: string }) {
   const { records, addRecord } = useWeightHistory(dogId);
   const [input, setInput] = useState("");
-  const storageKey = `weight_target_${dogId}`;
+  const { user } = useAuth();
+  const storageKey = `weight_target_${user?.id}_${dogId}`;
   const [targetInput, setTargetInput] = useState("");
   const [targetWeight, setTargetWeight] = useState<number | null>(() => {
     const v = localStorage.getItem(storageKey);
