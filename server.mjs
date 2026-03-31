@@ -246,6 +246,20 @@ app.patch("/api/auth/profile", authMiddleware, async (req, res) => {
 });
 
 // ── 관리자 API ───────────────────────────────────────────────────────────────
+app.get("/api/admin/push-subs", authMiddleware, adminOnly, async (req, res) => {
+  const subs = await db.select().from(pushSubscriptions);
+  const allUsers = await db.select().from(users);
+  const result = subs.map(s => {
+    const u = allUsers.find(u => u.id === s.userId);
+    return { clientId: s.clientId, userId: s.userId, userName: u?.name ?? "(없음)", endpoint: s.endpoint?.slice(0, 60) + "..." };
+  });
+  const memSubs = [...subscriptions.entries()].map(([cid, sub]) => ({
+    clientId: cid, userId: sub.userId, hasEndpoint: !!sub.endpoint,
+  }));
+  res.json({ db: result, memory: memSubs });
+});
+
+
 app.get("/api/admin/stats", authMiddleware, adminOnly, async (req, res) => {
   const [allUsers, allDogs, allAiLogs, allVetVisits, allVaccines] = await Promise.all([
     db.select().from(users),
