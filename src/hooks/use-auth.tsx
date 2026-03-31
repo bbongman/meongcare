@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useContext, createContext, type ReactNode } from "react";
+import { queryClient } from "@/lib/query-client";
 
 export interface AuthUser {
   id: string;
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!res.ok) throw new Error(data.error);
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    queryClient.clear();
     setUser(data.user);
     return data.user as AuthUser;
   }, []);
@@ -75,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!res.ok) throw new Error(data.error);
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    queryClient.clear();
     setUser(data.user);
     return data.user as AuthUser;
   }, []);
@@ -83,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     setUser(null);
+    queryClient.clear();
   }, []);
 
   const updateProfile = useCallback(async (data: { gender?: string; phone?: string; memo?: string }) => {
