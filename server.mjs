@@ -696,8 +696,10 @@ function sendPushToUser(userId, payload) {
 function checkSchedules() {
   if (subscriptions.size === 0) return;
   const now = new Date();
-  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const todayStr = now.toISOString().slice(0, 10);
+  // KST (UTC+9) 기준으로 시간 계산
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const hhmm = `${String(kst.getUTCHours()).padStart(2, "0")}:${String(kst.getUTCMinutes()).padStart(2, "0")}`;
+  const todayStr = kst.toISOString().slice(0, 10);
 
   // 어제 이전 항목 정리 (메모리 누수 방지)
   for (const [key, val] of firedThisMinute) {
@@ -710,9 +712,9 @@ function checkSchedules() {
       if (!s.vaccineDate || hhmm !== "09:00") continue;
       const fireKey = `${id}_${todayStr}`;
       if (firedThisMinute.get(id) === fireKey) continue;
-      const target = new Date(s.vaccineDate); target.setHours(0, 0, 0, 0);
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const diff = Math.round((target - today) / 86400000);
+      const target = new Date(s.vaccineDate + "T00:00:00+09:00");
+      const todayKst = new Date(todayStr + "T00:00:00+09:00");
+      const diff = Math.round((target - todayKst) / 86400000);
       if (diff === 7 || diff === 1 || diff === 0) {
         firedThisMinute.set(id, fireKey);
         const label = diff === 0 ? "오늘이에요!" : `D-${diff}이에요!`;
@@ -723,10 +725,11 @@ function checkSchedules() {
     if (s.time !== hhmm) continue;
     if (firedThisMinute.get(id) === hhmm) continue;
     const created = new Date(s.createdAt);
+    const createdKst = new Date(created.getTime() + 9 * 60 * 60 * 1000);
     let shouldFire = false;
     if (s.repeat === "daily") shouldFire = true;
-    else if (s.repeat === "weekly") shouldFire = now.getDay() === created.getDay();
-    else if (s.repeat === "monthly") shouldFire = now.getDate() === created.getDate();
+    else if (s.repeat === "weekly") shouldFire = kst.getUTCDay() === createdKst.getUTCDay();
+    else if (s.repeat === "monthly") shouldFire = kst.getUTCDate() === createdKst.getUTCDate();
     else if (s.repeat === "none") { if (!firedOnce.has(id)) { shouldFire = true; firedOnce.add(id); } }
     if (!shouldFire) continue;
     firedThisMinute.set(id, hhmm);
