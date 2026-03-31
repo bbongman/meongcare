@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { apiFetch } from "@/lib/api";
 import { useDogs } from "@/hooks/use-dogs";
 import { useHealthHistory } from "@/hooks/use-health-history";
 import { useDailyLog } from "@/hooks/use-daily-log";
@@ -114,13 +115,10 @@ export function ConsultationTab() {
     setError("");
     setPageState("analyzing");
     try {
-      const res = await fetch("/api/analyze", {
+      const data = await apiFetch<AssessmentResult>("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dog: selectedDog, symptoms }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "분석 실패");
       setResult(data);
       setCountdown(5);
       setAutoRedirectCancelled(false);

@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 import { useDogs } from "@/hooks/use-dogs";
 import { useHealthHistory } from "@/hooks/use-health-history";
 import { DogSelector } from "@/components/health/DogSelector";
@@ -89,13 +90,10 @@ export function ProductTab() {
         reader.readAsDataURL(selectedFile!);
       });
 
-      const res = await fetch("/api/analyze-product", {
+      const data = await apiFetch<any>("/api/analyze-product", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dog: selectedDog, imageBase64, mediaType: selectedFile.type || "image/jpeg" }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
       setResult(data);
       if (data.contentType === "food") {
         addItem("product", selectedDog?.name ?? "강아지", data.foodName, data);

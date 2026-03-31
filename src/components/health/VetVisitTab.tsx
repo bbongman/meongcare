@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 import { useDogs } from "@/hooks/use-dogs";
 import { useVetVisits, type VetVisit } from "@/hooks/use-vet-visits";
 import { DogSelector } from "@/components/health/DogSelector";
@@ -218,13 +219,10 @@ export function VetVisitTab() {
         reader.readAsDataURL(selectedFile!);
       });
 
-      const res = await fetch("/api/parse-receipt", {
+      const data = await apiFetch<any>("/api/parse-receipt", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dog: selectedDog, imageBase64, mediaType: selectedFile.type || "image/jpeg" }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
       setParsed(data);
     } catch (err: any) {
       setError(err.message);

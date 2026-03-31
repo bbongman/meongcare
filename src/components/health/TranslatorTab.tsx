@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 import { useDogs } from "@/hooks/use-dogs";
 import { useHealthHistory } from "@/hooks/use-health-history";
 import { DogSelector } from "@/components/health/DogSelector";
@@ -123,9 +124,8 @@ export function TranslatorTab() {
       for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
       const base64 = btoa(binary);
 
-      const res = await fetch("/api/classify-audio", {
+      const data = await apiFetch<any>("/api/classify-audio", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           audioBase64: base64,
           mimeType: audioBlob.type,
@@ -133,8 +133,6 @@ export function TranslatorTab() {
           context,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
       setResult(data);
       addItem("translation", displayName, `녹음 / ${context ?? "상황 미선택"}`, data);
     } catch (err: any) {
