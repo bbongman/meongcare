@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { motion } from "framer-motion";
 import { Search, Camera, AlertTriangle, CheckCircle, AlertCircle, X } from "lucide-react";
 import { useDogs } from "@/hooks/use-dogs";
 import { apiFetch } from "@/lib/api";
@@ -118,13 +119,15 @@ export function FoodCheckTab() {
         <p className="text-[10px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">자주 묻는 음식</p>
         <div className="flex flex-wrap gap-1.5">
           {QUICK_FOODS.map((f) => (
-            <button
+            <motion.button
               key={f}
+              whileTap={{ scale: 0.88 }}
+              transition={{ duration: 0.08 }}
               onClick={() => { setInput(f); check(f); }}
               className="px-3 py-1.5 text-xs font-semibold bg-card border border-border/50 rounded-xl hover:border-primary/40 hover:text-primary transition-colors"
             >
               {f}
-            </button>
+            </motion.button>
           ))}
         </div>
       </div>

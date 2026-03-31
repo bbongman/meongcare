@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Layout } from "@/components/layout";
 import { ConsultationTab } from "@/components/health/ConsultationTab";
 import { HistoryTab } from "@/components/health/HistoryTab";
@@ -67,13 +68,17 @@ export default function Health() {
 
         {/* 탭 바 */}
         <div className="flex items-center gap-2 mb-5">
-          <div className="flex gap-1.5 overflow-x-auto pb-1 flex-1 min-w-0 scrollbar-hide">
+          <div className="relative flex-1 min-w-0">
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent z-10" />
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
             {orderedTabs.map((tab) => (
-              <button
+              <motion.button
                 key={tab.id}
+                whileTap={{ scale: 0.88 }}
+                transition={{ duration: 0.08 }}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border",
+                  "flex items-center gap-1.5 rounded-xl text-xs font-bold shrink-0 transition-colors border",
                   activeTab === tab.id
                     ? "bg-primary text-white border-primary shadow-sm px-3 py-2"
                     : "bg-card text-muted-foreground border-border/50 hover:border-primary/30 px-2.5 py-2"
@@ -81,8 +86,9 @@ export default function Health() {
               >
                 <span>{tab.emoji}</span>
                 {activeTab === tab.id && <span>{tab.label}</span>}
-              </button>
+              </motion.button>
             ))}
+          </div>
           </div>
           {/* 목록/편집 버튼 */}
           <button

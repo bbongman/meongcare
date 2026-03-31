@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Plus, Bell, Trash2, Clock, RefreshCw } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,8 @@ export default function Schedule() {
   const { isSupported: pushSupported, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePushNotifications();
   const [testMsg, setTestMsg] = useState<string | null>(null);
 
+  const { toast } = useToast();
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<ScheduleType>("meal");
   const [title, setTitle] = useState("");
@@ -138,6 +141,7 @@ export default function Schedule() {
     });
     setOpen(false);
     resetForm();
+    toast({ title: "스케줄이 추가됐어요!" });
   }
 
   const filtered = filterType === "all" ? schedules : schedules.filter((s) => s.type === filterType);
@@ -299,11 +303,12 @@ export default function Schedule() {
         {/* Filter Tabs */}
         <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 -mx-1 px-1">
           {[{ type: "all" as const, label: "전체", emoji: "📋" }, ...TYPES].map((t) => (
-            <button
+            <motion.button
               key={t.type}
               onClick={() => setFilterType(t.type)}
+              whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
               className={cn(
-                "shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-semibold border transition-all duration-200",
+                "shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-semibold border transition-colors duration-200",
                 filterType === t.type
                   ? "bg-primary text-white border-primary shadow-md shadow-primary/25"
                   : "bg-card border-border text-muted-foreground hover:border-primary/40"
@@ -311,7 +316,7 @@ export default function Schedule() {
             >
               <span>{t.emoji}</span>
               {t.label}
-            </button>
+            </motion.button>
           ))}
         </div>
 
@@ -381,7 +386,7 @@ export default function Schedule() {
                         className="data-[state=checked]:bg-primary scale-90"
                       />
                       <button
-                        onClick={() => deleteSchedule.mutate(s.id)}
+                        onClick={() => setDeleteTargetId(s.id)}
                         className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -394,6 +399,29 @@ export default function Schedule() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={!!deleteTargetId} onOpenChange={(o) => !o && setDeleteTargetId(null)}>
+        <DialogContent className="rounded-3xl max-w-xs mx-4 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">스케줄 삭제</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mt-1">이 스케줄을 삭제할까요? 삭제 후에는 복구할 수 없어요.</p>
+          <div className="flex gap-2 mt-4">
+            <Button variant="outline" className="flex-1 rounded-xl h-11" onClick={() => setDeleteTargetId(null)}>취소</Button>
+            <Button
+              className="flex-1 rounded-xl h-11 bg-red-500 hover:bg-red-600 text-white"
+              onClick={() => {
+                if (deleteTargetId) {
+                  deleteSchedule.mutate(deleteTargetId);
+                  toast({ title: "스케줄이 삭제됐어요." });
+                  setDeleteTargetId(null);
+                }
+              }}
+            >삭제</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Schedule Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -408,11 +436,12 @@ export default function Schedule() {
               <Label className="text-sm font-bold text-muted-foreground">알림 종류</Label>
               <div className="grid grid-cols-2 gap-2">
                 {TYPES.map((t) => (
-                  <button
+                  <motion.button
                     key={t.type}
                     onClick={() => setSelectedType(t.type)}
+                    whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all",
+                      "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-colors",
                       selectedType === t.type
                         ? "bg-primary text-white border-primary shadow-sm"
                         : "border-border text-muted-foreground hover:border-primary/40"
@@ -420,7 +449,7 @@ export default function Schedule() {
                   >
                     <span>{t.emoji}</span>
                     {t.label}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
             </div>

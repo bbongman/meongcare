@@ -169,21 +169,23 @@ export function ConsultationTab() {
             <p className="text-xs text-muted-foreground mb-2">빠른 선택</p>
             <div className="flex flex-wrap gap-1.5">
               {SYMPTOM_EXAMPLES.map((ex) => (
-                <button key={ex} onClick={() => setSymptoms(ex)}
-                  className="text-xs px-3 py-1.5 rounded-full bg-secondary border border-border/40 text-muted-foreground hover:border-primary/30 hover:text-foreground transition-all">
+                <motion.button key={ex} onClick={() => setSymptoms(ex)}
+                  whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
+                  className="text-xs px-3 py-1.5 rounded-full bg-secondary border border-border/40 text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors">
                   {ex}
-                </button>
+                </motion.button>
               ))}
             </div>
           </div>
 
           {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>}
 
-          <button onClick={handleAnalyze} disabled={!symptoms.trim()}
-            className={cn("w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all",
-              symptoms.trim() ? "bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98]" : "bg-muted text-muted-foreground cursor-not-allowed")}>
+          <motion.button onClick={handleAnalyze} disabled={!symptoms.trim()}
+            whileTap={symptoms.trim() ? { scale: 0.96 } : undefined} transition={{ duration: 0.08 }}
+            className={cn("w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-colors",
+              symptoms.trim() ? "bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary/90" : "bg-muted text-muted-foreground cursor-not-allowed")}>
             <Sparkles className="w-4 h-4" />AI 분석하기
-          </button>
+          </motion.button>
           <p className="text-[11px] text-center text-muted-foreground">AI 분석은 참고용입니다. 정확한 진단은 수의사에게 받으세요.</p>
         </motion.div>
       )}

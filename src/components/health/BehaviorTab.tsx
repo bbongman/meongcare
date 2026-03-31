@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { Search, ChevronDown, ChevronUp } from "lucide-react";
 import { useDogs } from "@/hooks/use-dogs";
 import { apiFetch } from "@/lib/api";
@@ -112,13 +113,15 @@ export function BehaviorTab() {
         <p className="text-[10px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">자주 묻는 문제</p>
         <div className="flex flex-wrap gap-1.5">
           {QUICK_QUESTIONS.map(({ label, q }) => (
-            <button
+            <motion.button
               key={label}
+              whileTap={{ scale: 0.88 }}
+              transition={{ duration: 0.08 }}
               onClick={() => { setInput(q); ask(q); }}
               className="px-3 py-1.5 text-xs font-semibold bg-card border border-border/50 rounded-xl hover:border-primary/40 hover:text-primary transition-colors"
             >
               {label}
-            </button>
+            </motion.button>
           ))}
         </div>
       </div>

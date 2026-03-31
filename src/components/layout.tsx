@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Home, MapPin, HeartPulse, Sparkles, CalendarClock, LogOut } from "lucide-react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -43,10 +44,15 @@ export function Layout({ children }: LayoutProps) {
             const Icon = item.icon;
             
             return (
-              <Link 
-                key={item.path} 
+              <motion.div
+                key={item.path}
+                whileTap={{ scale: 0.85 }}
+                transition={{ duration: 0.08 }}
+                className="flex-1"
+              >
+              <Link
                 href={item.path}
-                className="flex-1 flex flex-col items-center justify-center gap-1.5 focus:outline-none group relative"
+                className="flex flex-col items-center justify-center gap-1.5 focus:outline-none group relative w-full"
               >
                 {isActive && (
                   <div className="absolute -top-3 w-10 h-1 bg-primary rounded-b-full shadow-[0_2px_8px_rgba(255,107,53,0.5)]" />
@@ -70,6 +76,7 @@ export function Layout({ children }: LayoutProps) {
                   {item.label}
                 </span>
               </Link>
+              </motion.div>
             );
           })}
         </div>

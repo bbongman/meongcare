@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Layout } from "@/components/layout";
-import { Loader2, MapPin, Phone, Navigation } from "lucide-react";
+import { Loader2, MapPin, Phone, Navigation, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 declare global {
@@ -59,7 +59,6 @@ export default function Map() {
   const [locationDenied, setLocationDenied] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
   const [activeCategory, setActiveCategory] = useState("동물병원");
-  const [openOnly, setOpenOnly] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [radius, setRadius] = useState(3000);
 
@@ -102,7 +101,7 @@ export default function Map() {
     setIsSearching(true);
     setSelectedId(null);
     doSearch(lat, lng, activeCategory).finally(() => setIsSearching(false));
-  }, [activeCategory, radius, openOnly]);
+  }, [activeCategory, radius]);
 
   function getCurrentLocation(): Promise<{ lat: number; lng: number }> {
     return new Promise((resolve, reject) => {
@@ -159,7 +158,6 @@ export default function Map() {
           location: new maps.LatLng(lat, lng),
           radius,
           sort: maps.services.SortBy.DISTANCE,
-          ...(openOnly ? { open_now: true } : {}),
         }
       );
     });
@@ -252,25 +250,6 @@ export default function Map() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-medium">영업중만 보기</span>
-              <button
-                onClick={() => setOpenOnly(v => !v)}
-                style={{ width: 40, height: 22 }}
-                className={cn(
-                  "relative rounded-full transition-colors duration-200 shrink-0",
-                  openOnly ? "bg-primary" : "bg-muted"
-                )}
-              >
-                <span
-                  style={{ width: 18, height: 18 }}
-                  className={cn(
-                    "absolute top-0.5 rounded-full bg-white shadow transition-transform duration-200",
-                    openOnly ? "translate-x-[19px]" : "translate-x-0.5"
-                  )}
-                />
-              </button>
-            </div>
           </div>
         </div>
 
@@ -356,12 +335,6 @@ export default function Map() {
           )}
         </div>
 
-        {/* Open Only Note */}
-        {openOnly && (status === "ready") && (
-          <div className="mx-4 mt-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-xl text-[11px] text-green-700 shrink-0">
-            ✅ 현재 영업 중인 장소만 표시하고 있어요.
-          </div>
-        )}
 
         {/* Place List */}
         <div className="flex-1 overflow-y-auto px-4 pt-3 pb-2 space-y-2">
@@ -444,6 +417,16 @@ export default function Map() {
                     className="w-8 h-8 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center text-blue-600 hover:bg-blue-100 transition-colors"
                   >
                     <Navigation className="w-3.5 h-3.5" />
+                  </a>
+                  <a
+                    href={h.place_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-8 h-8 bg-yellow-50 border border-yellow-100 rounded-xl flex items-center justify-center text-yellow-600 hover:bg-yellow-100 transition-colors"
+                    title="카카오맵에서 보기"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
               </button>

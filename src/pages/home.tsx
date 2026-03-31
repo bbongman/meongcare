@@ -12,6 +12,7 @@ import { DailyCheckDialog } from "@/components/daily-check-dialog";
 import { useDailyLog } from "@/hooks/use-daily-log";
 import { useSchedules, useAddSchedule, syncSchedulesToServer } from "@/hooks/use-schedules";
 import { useVetVisits } from "@/hooks/use-vet-visits";
+import { usePreventionMeds, MED_LABELS, type MedType } from "@/hooks/use-prevention-meds";
 import { useAllUpcomingVaccines } from "@/hooks/use-vaccines";
 import { differenceInDays } from "date-fns";
 import { format } from "date-fns";
@@ -294,6 +295,36 @@ function HealthTipWidget({ dog }: { dog: Dog }) {
   );
 }
 
+function UpcomingVetWidget() {
+  const { visits } = useVetVisits();
+  const [, setLocation] = useLocation();
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = visits
+    .filter((v) => v.nextVisitDate && v.nextVisitDate >= today)
+    .sort((a, b) => a.nextVisitDate.localeCompare(b.nextVisitDate))[0];
+  if (!upcoming) return null;
+  const diff = differenceInDays(new Date(upcoming.nextVisitDate), new Date());
+  const urgent = diff <= 7;
+  return (
+    <div className={cn("border rounded-3xl p-4 flex items-center gap-3", urgent ? "bg-red-50 border-red-100" : "bg-teal-50 border-teal-100")}>
+      <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-sm text-xl shrink-0">🏥</div>
+      <div className="flex-1 min-w-0">
+        <p className={cn("text-xs font-bold", urgent ? "text-red-600" : "text-teal-700")}>
+          {urgent ? "다음 진료 임박!" : "다음 진료 예정"}
+        </p>
+        <p className="text-sm font-semibold text-foreground truncate">{upcoming.hospitalName || "병원 방문"}</p>
+        <p className="text-xs text-muted-foreground">
+          {format(new Date(upcoming.nextVisitDate), "M월 d일 (EEE)", { locale: ko })}
+          {diff === 0 ? " — 오늘!" : diff > 0 ? ` — D-${diff}` : ` — D+${Math.abs(diff)}`}
+        </p>
+      </div>
+      <button onClick={() => setLocation("/health")} className={cn("text-[11px] font-semibold shrink-0", urgent ? "text-red-500" : "text-teal-500")}>
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 function RecentVetVisitWidget() {
   const { getRecent } = useVetVisits();
   const [, setLocation] = useLocation();
@@ -382,6 +413,60 @@ function UpcomingVaccineWidget() {
         <ChevronRight className="w-4 h-4" />
       </button>
     </div>
+  );
+}
+
+const MED_TYPES: MedType[] = ["heartworm", "flea", "tick", "combo"];
+
+function PreventionMedsWidget({ dogId }: { dogId: string }) {
+  const { getRecord, months } = usePreventionMeds(dogId);
+  const [, setLocation] = useLocation();
+  const yearMonth = months[0];
+  // 이전 달에 한 번이라도 사용한 타입만 체크
+  const trackedTypes = MED_TYPES.filter((t) =>
+    months.slice(1).some((m) => getRecord(t, m)?.done)
+  );
+  const undone = trackedTypes.filter((t) => !getRecord(t, yearMonth)?.done);
+  if (undone.length === 0) return null;
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-sm text-base">💊</div>
+          <p className="text-xs font-bold text-amber-700">이번 달 예방약 미완료</p>
+        </div>
+        <button
+          onClick={() => setLocation("/health")}
+          className="text-[11px] font-semibold text-amber-600 flex items-center gap-0.5 hover:text-amber-800 transition-colors"
+        >
+          체크하기 <ChevronRight className="w-3 h-3" />
+        </button>
+      </div>
+      <div className="flex gap-1.5 flex-wrap">
+        {undone.map((t) => (
+          <span key={t} className="text-xs px-2.5 py-1 rounded-full bg-white border border-amber-200 text-amber-700 font-semibold flex items-center gap-1">
+            {MED_LABELS[t].emoji} {MED_LABELS[t].label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BirthdayBanner({ dogs }: { dogs: Dog[] }) {
+  const birthdayDogs = dogs.filter((d) => d.birthday && getBirthdayDiff(d.birthday) === 0);
+  if (birthdayDogs.length === 0) return null;
+  const names = birthdayDogs.map((d) => d.name).join(", ");
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-gradient-to-r from-pink-400 to-rose-400 rounded-3xl p-5 text-white text-center shadow-lg shadow-pink-200"
+    >
+      <p className="text-3xl mb-2">🎂🎉</p>
+      <p className="text-lg font-bold">{names}의 생일이에요!</p>
+      <p className="text-sm text-white/80 mt-1">오늘 하루도 건강하고 행복하게!</p>
+    </motion.div>
   );
 }
 
@@ -618,6 +703,9 @@ export default function Home() {
               </AddDogDialog>
             </div>
 
+            {/* 생일 배너 */}
+            <BirthdayBanner dogs={dogs} />
+
             {/* Dog Cards Horizontal Scroll */}
             <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-4 -mx-6 px-6 snap-x snap-mandatory">
               <AnimatePresence>
@@ -706,8 +794,14 @@ export default function Home() {
             {/* 매일 건강 체크 리마인더 */}
             <DailyReminderBanner />
 
+            {/* 이번 달 예방약 미완료 */}
+            <PreventionMedsWidget dogId={dogs[0].id} />
+
             {/* 예방접종 예정 알림 */}
             <UpcomingVaccineWidget />
+
+            {/* 다음 진료 예정 */}
+            <UpcomingVetWidget />
 
             {/* 최근 검진 기록 */}
             <RecentVetVisitWidget />

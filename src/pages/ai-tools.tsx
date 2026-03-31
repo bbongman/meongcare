@@ -34,18 +34,20 @@ export default function AiTools() {
 
         <div className="flex gap-1.5 mb-5 overflow-x-auto pb-1">
           {TABS.map((tab) => (
-            <button
+            <motion.button
               key={tab.id}
+              whileTap={{ scale: 0.88 }}
+              transition={{ duration: 0.08 }}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border",
+                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold shrink-0 transition-colors border",
                 activeTab === tab.id
                   ? "bg-primary text-white border-primary shadow-sm"
                   : "bg-card text-muted-foreground border-border/50 hover:border-primary/30"
               )}
             >
               <span>{tab.emoji}</span>{tab.label}
-            </button>
+            </motion.button>
           ))}
         </div>
 

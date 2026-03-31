@@ -79,10 +79,11 @@ export function VaccineTab() {
     <div className="space-y-4">
       <DogSelector dogs={dogs} selectedId={selectedDogId} onSelect={setSelectedDogId} />
 
-      <button
+      <motion.button
         onClick={() => setShowForm(!showForm)}
+        whileTap={{ scale: 0.96 }} transition={{ duration: 0.08 }}
         className={cn(
-          "w-full py-3 rounded-2xl border text-sm font-bold flex items-center justify-center gap-2 transition-all",
+          "w-full py-3 rounded-2xl border text-sm font-bold flex items-center justify-center gap-2 transition-colors",
           showForm
             ? "bg-secondary border-border/60 text-muted-foreground"
             : "bg-primary text-white border-primary shadow-sm hover:bg-primary/90"
@@ -90,7 +91,7 @@ export function VaccineTab() {
       >
         <Plus className="w-4 h-4" />
         {showForm ? "취소" : "접종 기록 추가"}
-      </button>
+      </motion.button>
 
       <AnimatePresence>
         {showForm && (
@@ -106,18 +107,19 @@ export function VaccineTab() {
               <p className="text-xs font-semibold text-muted-foreground mb-1.5">백신 종류</p>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {COMMON_VACCINES.map((v) => (
-                  <button
+                  <motion.button
                     key={v}
                     onClick={() => setForm((p) => ({ ...p, vaccineName: v }))}
+                    whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
                     className={cn(
-                      "text-xs px-2.5 py-1 rounded-full border transition-all",
+                      "text-xs px-2.5 py-1 rounded-full border transition-colors",
                       form.vaccineName === v
                         ? "bg-primary text-white border-primary"
                         : "bg-secondary border-border/40 text-muted-foreground hover:border-primary/30"
                     )}
                   >
                     {v}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
               {form.vaccineName === "기타" && (
@@ -175,13 +177,14 @@ export function VaccineTab() {
               />
             </div>
 
-            <button
+            <motion.button
               onClick={handleSave}
               disabled={!form.vaccineName || !form.date}
+              whileTap={form.vaccineName && form.date ? { scale: 0.96 } : undefined} transition={{ duration: 0.08 }}
               className="w-full py-3 rounded-2xl bg-primary text-white text-sm font-bold disabled:opacity-40 hover:bg-primary/90 transition-colors"
             >
               저장하기
-            </button>
+            </motion.button>
           </motion.div>
         )}
       </AnimatePresence>
