@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Bell, Trash2, Clock, RefreshCw } from "lucide-react";
+import { Plus, Bell, Trash2, Clock, RefreshCw, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { Layout } from "@/components/layout";
@@ -65,6 +65,7 @@ export default function Schedule() {
 
   const { toast } = useToast();
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<typeof schedules[0] | null>(null);
   const [open, setOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<ScheduleType>("meal");
   const [title, setTitle] = useState("");
@@ -142,6 +143,42 @@ export default function Schedule() {
     setOpen(false);
     resetForm();
     toast({ title: "스케줄이 추가됐어요!" });
+  }
+
+  function handleEditSubmit() {
+    if (!editTarget) return;
+    const dog = selectedDogId === "_all" ? undefined : dogs.find((d) => d.id === selectedDogId);
+    const finalTitle =
+      title.trim() ||
+      (selectedType === "medicine" && medicineName ? `${medicineName} 복용` :
+       selectedType === "vaccine" ? "예방접종" :
+       SCHEDULE_LABELS[selectedType].label);
+    updateSchedule.mutate({
+      id: editTarget.id,
+      updates: {
+        title: finalTitle,
+        time,
+        repeat,
+        dogId: selectedDogId === "_all" ? undefined : selectedDogId || undefined,
+        dogName: dog?.name,
+        medicineName: selectedType === "medicine" ? medicineName : undefined,
+        vaccineDate: selectedType === "vaccine" ? vaccineDate : undefined,
+      },
+    });
+    setEditTarget(null);
+    resetForm();
+    toast({ title: "스케줄이 수정됐어요!" });
+  }
+
+  function openEdit(s: typeof schedules[0]) {
+    setSelectedType(s.type);
+    setTitle(s.title);
+    setTime(s.time ?? "08:00");
+    setRepeat(s.repeat ?? "daily");
+    setMedicineName(s.medicineName ?? "");
+    setVaccineDate(s.vaccineDate ?? "");
+    setSelectedDogId(s.dogId ?? "_all");
+    setEditTarget(s);
   }
 
   const filtered = filterType === "all" ? schedules : schedules.filter((s) => s.type === filterType);
@@ -386,6 +423,12 @@ export default function Schedule() {
                         className="data-[state=checked]:bg-primary scale-90"
                       />
                       <button
+                        onClick={() => openEdit(s)}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         onClick={() => setDeleteTargetId(s.id)}
                         className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
                       >
@@ -420,6 +463,71 @@ export default function Schedule() {
               }}
             >삭제</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Schedule Dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) { setEditTarget(null); resetForm(); } }}>
+        <DialogContent className="rounded-3xl max-w-sm mx-4 p-0 max-h-[85dvh] flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+            <DialogTitle className="text-xl font-bold">스케줄 수정</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 px-6 pb-2 overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
+            {dogs.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-muted-foreground">반려견 선택 (선택사항)</Label>
+                <Select value={selectedDogId} onValueChange={setSelectedDogId}>
+                  <SelectTrigger className="rounded-xl h-11"><SelectValue placeholder="모든 반려견" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">모든 반려견</SelectItem>
+                    {dogs.map((d) => <SelectItem key={d.id} value={d.id}>🐾 {d.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {editTarget?.type === "medicine" && (
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-muted-foreground">약 이름</Label>
+                <Input placeholder="예: 심장사상충 예방약" value={medicineName} onChange={(e) => setMedicineName(e.target.value)} className="rounded-xl h-11" />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-muted-foreground">알림 제목</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="rounded-xl h-11" />
+            </div>
+            {editTarget?.type !== "vaccine" && (
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-muted-foreground">알림 시간</Label>
+                <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-xl h-11" style={{ fontSize: 16 }} />
+              </div>
+            )}
+            {editTarget?.type === "vaccine" && (
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-muted-foreground">예방접종 날짜</Label>
+                <Input type="date" value={vaccineDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setVaccineDate(e.target.value)} className="rounded-xl h-11" style={{ fontSize: 16 }} />
+              </div>
+            )}
+            {editTarget?.type !== "vaccine" && (
+              <div className="space-y-2">
+                <Label className="text-sm font-bold text-muted-foreground">반복</Label>
+                <Select value={repeat} onValueChange={(v) => setRepeat(v as RepeatType)}>
+                  <SelectTrigger className="rounded-xl h-11"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">매일</SelectItem>
+                    <SelectItem value="weekly">매주</SelectItem>
+                    <SelectItem value="monthly">매월</SelectItem>
+                    <SelectItem value="none">반복 없음</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2 px-6 pb-6 pt-3 shrink-0 border-t border-border/30">
+            <Button variant="outline" onClick={() => { setEditTarget(null); resetForm(); }} className="flex-1 rounded-xl h-11">취소</Button>
+            <Button onClick={handleEditSubmit} disabled={updateSchedule.isPending} className="flex-1 rounded-xl h-11 bg-primary text-white shadow-md shadow-primary/25">
+              {updateSchedule.isPending ? "저장 중..." : "저장하기"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -524,6 +632,7 @@ export default function Schedule() {
                 <Input
                   type="date"
                   value={vaccineDate}
+                  min={new Date().toISOString().slice(0, 10)}
                   onChange={(e) => setVaccineDate(e.target.value)}
                   className="rounded-xl h-11"
                   style={{ fontSize: 16 }}

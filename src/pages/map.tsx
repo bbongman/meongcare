@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Layout } from "@/components/layout";
-import { Loader2, MapPin, Phone, Navigation, ExternalLink } from "lucide-react";
+import { Loader2, MapPin, Phone, Navigation, ExternalLink, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 declare global {
@@ -61,6 +61,7 @@ export default function Map() {
   const [activeCategory, setActiveCategory] = useState("동물병원");
   const [isSearching, setIsSearching] = useState(false);
   const [radius, setRadius] = useState(3000);
+  const [manualQuery, setManualQuery] = useState("");
 
   const apiKey = import.meta.env.VITE_KAKAO_MAP_KEY as string | undefined;
   const currentDomain = window.location.origin;
@@ -160,6 +161,27 @@ export default function Map() {
           sort: maps.services.SortBy.DISTANCE,
         }
       );
+    });
+  }
+
+  function doManualSearch(query: string) {
+    if (!window.kakao?.maps || !query.trim()) return;
+    const { maps } = window.kakao;
+    const ps = new maps.services.Places();
+    setIsSearching(true);
+    setPlaces([]);
+    ps.keywordSearch(query, (data: Place[], st: string) => {
+      if (st === maps.services.Status.OK) {
+        setPlaces(data.slice(0, 10));
+        if (data[0] && mapRef.current) {
+          const center = new maps.LatLng(parseFloat(data[0].y), parseFloat(data[0].x));
+          mapRef.current.setCenter(center);
+          addMarkers(data.slice(0, 10));
+        }
+      } else {
+        setPlaces([]);
+      }
+      setIsSearching(false);
     });
   }
 
@@ -301,14 +323,35 @@ export default function Map() {
                   <span className="text-3xl">📍</span>
                   <p className="text-sm font-bold text-foreground">위치 접근이 필요해요</p>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    브라우저 주소창 왼쪽의 자물쇠 아이콘을 누른 뒤<br />
-                    <span className="font-semibold text-foreground">위치 → 허용</span>으로 변경하고 새로고침 해주세요
+                    위치를 허용하거나, 직접 검색해보세요
                   </p>
+                  <form
+                    onSubmit={(e) => {
+      e.preventDefault();
+      // SDK는 이미 로드됨. 지도가 없으면 기본 좌표(서울 시청)로 초기화
+      if (!mapRef.current && window.kakao?.maps && mapContainerRef.current) {
+        initMap(37.5665, 126.9780);
+      }
+      setStatus("ready");
+      doManualSearch(manualQuery);
+    }}
+                    className="flex gap-2 w-full max-w-xs"
+                  >
+                    <input
+                      value={manualQuery}
+                      onChange={(e) => setManualQuery(e.target.value)}
+                      placeholder="예: 강남역 동물병원"
+                      className="flex-1 h-9 px-3 rounded-xl border border-border/60 bg-white text-sm focus:outline-none focus:border-primary/50"
+                    />
+                    <button type="submit" className="h-9 px-3 rounded-xl bg-primary text-white text-xs font-bold flex items-center gap-1">
+                      <Search className="w-3.5 h-3.5" />검색
+                    </button>
+                  </form>
                   <button
                     onClick={() => window.location.reload()}
-                    className="text-xs font-bold text-white bg-primary px-5 py-2 rounded-full hover:bg-primary/90 transition-colors"
+                    className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    새로고침
+                    위치 허용 후 새로고침
                   </button>
                 </>
               ) : (
