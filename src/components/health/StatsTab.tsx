@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Dot, ReferenceLine } from "recharts";
 import { useDogs } from "@/hooks/use-dogs";
 import { useDailyLog } from "@/hooks/use-daily-log";
@@ -186,6 +187,7 @@ function VetCostSection() {
 function StatsContent({ dogId }: { dogId: string }) {
   const [period, setPeriod] = useState<7 | 30>(7);
   const { recentLogs } = useDailyLog(dogId);
+  const [, setLocation] = useLocation();
   const logs = recentLogs(period);
   const chartData = buildChartData(logs, period);
 
@@ -204,6 +206,12 @@ function StatsContent({ dogId }: { dogId: string }) {
         <span className="text-5xl mb-4">📊</span>
         <p className="text-base font-bold text-foreground">아직 기록이 없어요</p>
         <p className="text-sm text-muted-foreground mt-1">홈에서 오늘 건강 체크를 해보세요</p>
+        <button
+          onClick={() => setLocation("/")}
+          className="mt-4 px-5 py-2.5 rounded-2xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors"
+        >
+          홈으로 이동
+        </button>
       </div>
     );
   }

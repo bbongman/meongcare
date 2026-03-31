@@ -58,6 +58,7 @@ export function VaccineTab() {
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   function handleSave() {
     if (!form.vaccineName || !form.date) return;
@@ -212,9 +213,16 @@ export function VaccineTab() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold text-sm text-foreground truncate">{rec.vaccineName}</p>
-                  <button onClick={() => removeRecord(rec.id)} className="text-muted-foreground/40 hover:text-red-400 transition-colors shrink-0">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {confirmDeleteId === rec.id ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-muted-foreground px-2 py-0.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors">취소</button>
+                      <button onClick={() => { removeRecord(rec.id); setConfirmDeleteId(null); }} className="text-xs text-white bg-red-500 hover:bg-red-600 transition-colors px-2 py-0.5 rounded-lg font-semibold">삭제</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDeleteId(rec.id)} className="text-muted-foreground/40 hover:text-red-400 transition-colors shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-muted-foreground flex items-center gap-1">

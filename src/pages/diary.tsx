@@ -410,7 +410,7 @@ function DiaryContent({ dog }: { dog: Dog }) {
     </div>
   );
 
-  if (allLogs.length === 0) {
+  if (allLogs.length === 0 && view === "list") {
     return (
       <>
         {header}
@@ -418,8 +418,14 @@ function DiaryContent({ dog }: { dog: Dog }) {
           <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mb-4 text-4xl">📔</div>
           <p className="text-base font-bold text-foreground">아직 기록이 없어요</p>
           <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-            홈에서 오늘 건강 체크를<br/>시작해보세요
+            캘린더에서 날짜를 눌러 바로 기록할 수 있어요
           </p>
+          <button
+            onClick={() => setView("calendar")}
+            className="mt-4 px-5 py-2.5 rounded-2xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors"
+          >
+            캘린더로 기록하기
+          </button>
         </div>
       </>
     );

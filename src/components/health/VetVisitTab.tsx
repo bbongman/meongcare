@@ -28,6 +28,7 @@ const CONFIDENCE_LABEL = {
 
 function VetVisitCard({ visit, onDelete }: { visit: VetVisit; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <motion.div
@@ -120,12 +121,20 @@ function VetVisitCard({ visit, onDelete }: { visit: VetVisit; onDelete: () => vo
                 <p className="text-xs text-muted-foreground bg-secondary/50 rounded-xl px-3 py-2">{visit.notes}</p>
               )}
 
-              <button
-                onClick={onDelete}
-                className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 transition-colors pt-1"
-              >
-                <Trash2 className="w-3.5 h-3.5" />삭제
-              </button>
+              {confirmDelete ? (
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-xs text-muted-foreground">정말 삭제할까요?</span>
+                  <button onClick={() => setConfirmDelete(false)} className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg bg-secondary">취소</button>
+                  <button onClick={onDelete} className="text-xs text-white bg-red-500 hover:bg-red-600 transition-colors px-2 py-1 rounded-lg font-semibold">삭제</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 transition-colors pt-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />삭제
+                </button>
+              )}
             </div>
           </motion.div>
         )}
