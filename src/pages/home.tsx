@@ -3,6 +3,7 @@ import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, 
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { InstallGuideDialog } from "@/components/install-guide-dialog";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { useLocation } from "wouter";
 import { useDogs, type Dog } from "@/hooks/use-dogs";
 import { useAuth } from "@/hooks/use-auth";
@@ -471,6 +472,35 @@ function BirthdayBanner({ dogs }: { dogs: Dog[] }) {
   );
 }
 
+function PushNotifBanner() {
+  const { isSupported, isSubscribed, isLoading, subscribe } = usePushNotifications();
+  const { user } = useAuth();
+  const dismissKey = `meongcare_push_banner_dismissed_${user?.id}`;
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(dismissKey) === "1");
+
+  if (!isSupported || isSubscribed || dismissed) return null;
+
+  async function handleAllow() {
+    const ok = await subscribe();
+    if (ok) {
+      syncSchedulesToServer();
+      setDismissed(true);
+      localStorage.setItem(dismissKey, "1");
+    }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-2xl px-4 py-3 flex items-center gap-3">
+      <Bell className="w-4 h-4 text-orange-500 shrink-0" />
+      <p className="text-xs text-orange-700 flex-1 font-medium">알림을 허용하면 스케줄 시간에 푸시 알림을 받을 수 있어요</p>
+      <div className="flex gap-1.5 shrink-0">
+        <button onClick={() => { setDismissed(true); localStorage.setItem(dismissKey, "1"); }} className="text-xs text-muted-foreground px-2 py-1 rounded-lg hover:bg-white/60">나중에</button>
+        <button onClick={handleAllow} disabled={isLoading} className="text-xs font-bold text-white bg-orange-500 px-3 py-1 rounded-lg hover:bg-orange-600 transition-colors">{isLoading ? "..." : "허용"}</button>
+      </div>
+    </motion.div>
+  );
+}
+
 function DailyReminderBanner() {
   const { data: schedules = [] } = useSchedules();
   const addSchedule = useAddSchedule();
@@ -686,6 +716,9 @@ export default function Home() {
 
             {/* 주간 건강 요약 */}
             <WeeklyHealthWidget dogId={dogs[0].id} dogName={dogs[0].name} />
+
+            {/* 푸시 알림 허용 유도 */}
+            <PushNotifBanner />
 
             {/* 매일 건강 체크 리마인더 */}
             <DailyReminderBanner />
