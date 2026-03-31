@@ -14,10 +14,11 @@ if ("serviceWorker" in navigator) {
     const sub = await reg.pushManager.getSubscription();
     if (sub) {
       const clientId = localStorage.getItem("meongcare_push_client_id");
-      if (clientId) {
+      const token = localStorage.getItem("meongcare_token");
+      if (clientId && token) {
         fetch("/api/push-subscribe", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ subscription: sub.toJSON(), clientId }),
         }).catch(() => {});
       }
