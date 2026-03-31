@@ -75,6 +75,7 @@ export default function Schedule() {
   const [vaccineDate, setVaccineDate] = useState("");
   const [selectedDogId, setSelectedDogId] = useState<string>("_all");
   const [filterType, setFilterType] = useState<ScheduleType | "all">("all");
+  const [filterDogId, setFilterDogId] = useState<string>("_all");
 
   async function handleResubscribe() {
     await unsubscribe();
@@ -182,7 +183,11 @@ export default function Schedule() {
     setEditTarget(s);
   }
 
-  const filtered = filterType === "all" ? schedules : schedules.filter((s) => s.type === filterType);
+  const filtered = schedules.filter((s) => {
+    if (filterType !== "all" && s.type !== filterType) return false;
+    if (filterDogId !== "_all" && s.dogId && s.dogId !== filterDogId) return false;
+    return true;
+  });
 
   const urgentVaccines = schedules.filter((s) => {
     if (s.type !== "vaccine" || !s.vaccineDate || !s.enabled) return false;
@@ -339,23 +344,56 @@ export default function Schedule() {
         </AnimatePresence>
 
         {/* Filter Tabs */}
-        <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 -mx-1 px-1">
-          {[{ type: "all" as const, label: "전체", emoji: "📋" }, ...TYPES].map((t) => (
-            <motion.button
-              key={t.type}
-              onClick={() => setFilterType(t.type)}
-              whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
-              className={cn(
-                "shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-semibold border transition-colors duration-200",
-                filterType === t.type
-                  ? "bg-primary text-white border-primary shadow-md shadow-primary/25"
-                  : "bg-card border-border text-muted-foreground hover:border-primary/40"
-              )}
-            >
-              <span>{t.emoji}</span>
-              {t.label}
-            </motion.button>
-          ))}
+        <div className="space-y-2">
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 -mx-1 px-1">
+            {[{ type: "all" as const, label: "전체", emoji: "📋" }, ...TYPES].map((t) => (
+              <motion.button
+                key={t.type}
+                onClick={() => setFilterType(t.type)}
+                whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
+                className={cn(
+                  "shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-semibold border transition-colors duration-200",
+                  filterType === t.type
+                    ? "bg-primary text-white border-primary shadow-md shadow-primary/25"
+                    : "bg-card border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                <span>{t.emoji}</span>
+                {t.label}
+              </motion.button>
+            ))}
+          </div>
+          {dogs.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 -mx-1 px-1">
+              <motion.button
+                onClick={() => setFilterDogId("_all")}
+                whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
+                className={cn(
+                  "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors duration-200",
+                  filterDogId === "_all"
+                    ? "bg-foreground text-white border-foreground"
+                    : "bg-card border-border text-muted-foreground hover:border-foreground/40"
+                )}
+              >
+                전체 강아지
+              </motion.button>
+              {dogs.map((d) => (
+                <motion.button
+                  key={d.id}
+                  onClick={() => setFilterDogId(d.id)}
+                  whileTap={{ scale: 0.88 }} transition={{ duration: 0.08 }}
+                  className={cn(
+                    "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors duration-200",
+                    filterDogId === d.id
+                      ? "bg-foreground text-white border-foreground"
+                      : "bg-card border-border text-muted-foreground hover:border-foreground/40"
+                  )}
+                >
+                  🐾 {d.name}
+                </motion.button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Schedule List */}
