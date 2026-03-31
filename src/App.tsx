@@ -35,6 +35,56 @@ function Router() {
   );
 }
 
+function KakaoRedirect() {
+  const [showIosGuide, setShowIosGuide] = useState(false);
+
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    const isKakao = /KAKAOTALK/i.test(ua);
+    if (!isKakao) return;
+
+    const isAndroid = /Android/i.test(ua);
+    const isIos = /iPhone|iPad|iPod/i.test(ua);
+
+    if (isAndroid) {
+      // Android: intent 스킴으로 기본 브라우저에서 열기
+      const url = window.location.href;
+      const host = window.location.host;
+      const path = window.location.pathname + window.location.search + window.location.hash;
+      window.location.replace(
+        `intent://${host}${path}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`
+      );
+    } else if (isIos) {
+      setShowIosGuide(true);
+    }
+  }, []);
+
+  if (!showIosGuide) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center px-8 text-center">
+      <img src="/icons/icon-192x192.png" alt="" className="w-20 h-20 rounded-3xl shadow-lg mb-6" />
+      <h2 className="text-xl font-bold text-foreground mb-2">외부 브라우저에서 열어주세요</h2>
+      <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
+        카카오톡 내부 브라우저에서는 일부 기능(알림, 홈 화면 추가)이 제한됩니다.
+      </p>
+      <div className="bg-secondary/60 rounded-2xl p-5 w-full space-y-3 text-left">
+        <p className="text-xs font-bold text-foreground">Safari로 여는 방법</p>
+        <ol className="space-y-2.5">
+          <li className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="w-6 h-6 rounded-full bg-primary text-white text-[11px] font-bold flex items-center justify-center shrink-0">1</span>
+            화면 우측 하단 <strong className="text-foreground mx-1">···</strong> 버튼 탭
+          </li>
+          <li className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="w-6 h-6 rounded-full bg-primary text-white text-[11px] font-bold flex items-center justify-center shrink-0">2</span>
+            <strong className="text-foreground">"Safari로 열기"</strong> 선택
+          </li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 function InstallBanner() {
   const [show, setShow] = useState(false);
   const [isIos, setIsIos] = useState(false);
@@ -110,6 +160,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
+          <KakaoRedirect />
           <AuthGate />
           <Toaster />
         </TooltipProvider>
