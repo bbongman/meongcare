@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Stethoscope, ChevronRight, Pencil, Share2, Timer, Square, Star, Phone } from "lucide-react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Stethoscope, ChevronRight, Pencil, Share2, Timer, Square, Star, Phone, Check } from "lucide-react";
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { InstallGuideDialog } from "@/components/install-guide-dialog";
