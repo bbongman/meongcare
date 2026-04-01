@@ -8,11 +8,10 @@ import { useWeightHistory } from "@/hooks/use-weight-history";
 import { useVetVisits } from "@/hooks/use-vet-visits";
 import { cn } from "@/lib/utils";
 import { getAuthToken } from "@/hooks/use-auth";
-import { FileDown } from "lucide-react";
+import { FileDown, Share2, Download } from "lucide-react";
 
-const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
-const ENERGY_LABEL = ["축처짐", "보통", "활발"];
-const ENERGY_COLOR = ["#93c5fd", "#34d399", "#fb923c"];
+import { MEAL_LABEL, ENERGY_LABEL } from "@/lib/constants";
+const ENERGY_HEX = ["#93c5fd", "#34d399", "#fb923c"];
 
 function buildChartData(recentLogs: ReturnType<ReturnType<typeof useDailyLog>["recentLogs"]>, days: number) {
   const map = new Map(recentLogs.map((l) => [l.date, l]));
@@ -276,7 +275,7 @@ function StatsContent({ dogId }: { dogId: string }) {
             />
             <Bar dataKey="energy" radius={[4, 4, 0, 0]}>
               {chartData.map((entry, i) => (
-                <Cell key={i} fill={entry.energy === null ? "#e5e7eb" : ENERGY_COLOR[entry.energy]} />
+                <Cell key={i} fill={entry.energy === null ? "#e5e7eb" : ENERGY_HEX[entry.energy]} />
               ))}
             </Bar>
           </BarChart>
@@ -344,16 +343,48 @@ export function StatsTab() {
       {activeDogId && (
         <>
           <StatsContent dogId={activeDogId} />
-          <div className="mt-5">
+          <div className="mt-5 space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const token = getAuthToken();
+                  window.open(`/api/report/${activeDogId}?token=${token}`, "_blank");
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-muted-foreground bg-card border border-border/50 rounded-2xl hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                <FileDown className="w-4 h-4" />
+                PDF 저장
+              </button>
+              <button
+                onClick={() => {
+                  const dog = dogs.find((d) => d.id === activeDogId);
+                  if (!dog) return;
+                  const now = new Date();
+                  const month = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
+                  const text = `[멍케어 건강 리포트]\n${dog.name} (${dog.breed}) · ${month}\n\n${dog.weight ? `체중: ${dog.weight}kg` : ""}\n\n상세 리포트는 멍케어 앱에서 확인하세요.`;
+                  if (navigator.share) {
+                    navigator.share({ title: `${dog.name} 건강 리포트`, text });
+                  } else {
+                    navigator.clipboard.writeText(text);
+                  }
+                }}
+                className="py-3 px-4 flex items-center justify-center gap-2 text-sm font-semibold text-muted-foreground bg-card border border-border/50 rounded-2xl hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+                공유
+              </button>
+            </div>
             <button
               onClick={() => {
                 const token = getAuthToken();
-                window.open(`/api/report/${activeDogId}?token=${token}`, "_blank");
+                const link = document.createElement("a");
+                link.href = `/api/export/${activeDogId}?token=${token}`;
+                link.click();
               }}
               className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-muted-foreground bg-card border border-border/50 rounded-2xl hover:border-primary/40 hover:text-primary transition-colors"
             >
-              <FileDown className="w-4 h-4" />
-              건강 리포트 PDF로 저장
+              <Download className="w-4 h-4" />
+              전체 데이터 CSV 내보내기
             </button>
           </div>
         </>

@@ -22,9 +22,7 @@ const ENERGY_OPTIONS = [
   { value: 2 as const, label: "활발", emoji: "🐕" },
 ];
 
-const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
-const ENERGY_LABEL = ["축처짐", "보통", "활발"];
-const ENERGY_COLOR = ["text-blue-400", "text-green-500", "text-orange-400"];
+import { MEAL_LABEL, ENERGY_LABEL, ENERGY_COLOR } from "@/lib/constants";
 
 type LogData = Omit<DailyLog, "id" | "dogId" | "date">;
 
@@ -365,10 +363,22 @@ function DiaryContent({ dog }: { dog: Dog }) {
   const { allLogs, saveLogForDate } = useDailyLog(dog.id);
   const [view, setView] = useState<"list" | "calendar">("list");
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<string | null>(null);
 
-  const filteredLogs = query.trim()
-    ? allLogs.filter((l) => l.memo?.toLowerCase().includes(query.toLowerCase()))
-    : allLogs;
+  const FILTERS = [
+    { id: "no-meal", label: "안먹음", emoji: "😞", fn: (l: DailyLog) => l.meal === 0 },
+    { id: "walk", label: "산책", emoji: "🦮", fn: (l: DailyLog) => l.walk },
+    { id: "no-walk", label: "산책X", emoji: "🚫", fn: (l: DailyLog) => !l.walk },
+    { id: "low-energy", label: "축처짐", emoji: "😴", fn: (l: DailyLog) => l.energy === 0 },
+    { id: "memo", label: "메모있음", emoji: "📝", fn: (l: DailyLog) => !!l.memo },
+  ];
+
+  const activeFilter = FILTERS.find((f) => f.id === filter);
+  const filteredLogs = allLogs.filter((l) => {
+    if (query.trim() && !l.memo?.toLowerCase().includes(query.toLowerCase())) return false;
+    if (activeFilter && !activeFilter.fn(l)) return false;
+    return true;
+  });
 
   const header = (
     <div className="space-y-2 mb-3">
@@ -405,6 +415,24 @@ function DiaryContent({ dog }: { dog: Dog }) {
               <X className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
+      )}
+      {view === "list" && (
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(filter === f.id ? null : f.id)}
+              className={cn(
+                "shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors",
+                filter === f.id
+                  ? "bg-primary/10 border-primary/40 text-primary"
+                  : "bg-secondary/50 border-border/40 text-muted-foreground"
+              )}
+            >
+              <span>{f.emoji}</span>{f.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

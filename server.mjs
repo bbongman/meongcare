@@ -180,22 +180,65 @@ async function adminOnly(req, res, next) {
 
 // ── 관리자 계정 초기화 ───────────────────────────────────────────────────────
 const ADMIN_NAME = "관리자";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "meong1234";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 (async () => {
   try {
+    if (!ADMIN_PASSWORD) {
+      console.warn("[경고] ADMIN_PASSWORD 환경변수가 없습니다. 관리자 계정이 생성되지 않습니다.");
+      return;
+    }
+    if (ADMIN_PASSWORD.length < 8) {
+      console.warn("[경고] ADMIN_PASSWORD가 8자 미만입니다. 더 강력한 비밀번호를 설정하세요.");
+    }
     const existing = await db.select().from(users).where(eq(users.name, ADMIN_NAME));
     if (existing.length === 0) {
-      const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
       await db.insert(users).values({ id: crypto.randomUUID(), name: ADMIN_NAME, hash, role: "admin" });
       console.log(`관리자 계정 생성: ${ADMIN_NAME}`);
+    } else {
+      const match = await bcrypt.compare(ADMIN_PASSWORD, existing[0].hash);
+      if (!match) {
+        const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+        await db.update(users).set({ hash }).where(eq(users.id, existing[0].id));
+        console.log("관리자 비밀번호 업데이트 완료");
+      }
     }
   } catch (e) {
     console.error("관리자 초기화 실패:", e.message);
   }
 })();
 
+// ── Rate Limiting (인증 엔드포인트) ──────────────────────────────────────────
+const authAttempts = new Map();
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_MAX_ATTEMPTS = 10;
+
+function authRateLimit(req, res, next) {
+  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
+  const now = Date.now();
+  const record = authAttempts.get(ip);
+  if (record) {
+    record.attempts = record.attempts.filter((t) => now - t < AUTH_WINDOW_MS);
+    if (record.attempts.length >= AUTH_MAX_ATTEMPTS) {
+      return res.status(429).json({ error: "너무 많은 요청이에요. 15분 후에 다시 시도해주세요." });
+    }
+    record.attempts.push(now);
+  } else {
+    authAttempts.set(ip, { attempts: [now] });
+  }
+  next();
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of authAttempts) {
+    record.attempts = record.attempts.filter((t) => now - t < AUTH_WINDOW_MS);
+    if (record.attempts.length === 0) authAttempts.delete(ip);
+  }
+}, 60 * 1000);
+
 // ── 회원가입 / 로그인 API ────────────────────────────────────────────────────
-app.post("/api/auth/register", async (req, res) => {
+app.post("/api/auth/register", authRateLimit, async (req, res) => {
   const { name, password } = req.body;
   if (!name?.trim() || !password) return res.status(400).json({ error: "이름과 비밀번호를 입력해주세요." });
   if (password.length < 4) return res.status(400).json({ error: "비밀번호는 4자 이상이어야 해요." });
@@ -207,11 +250,11 @@ app.post("/api/auth/register", async (req, res) => {
   const hash = await bcrypt.hash(password, 10);
   await db.insert(users).values({ id, name: name.trim(), hash, role: "user" });
 
-  const token = jwt.sign({ id, name: name.trim() }, JWT_SECRET, { expiresIn: "30d" });
+  const token = jwt.sign({ id, name: name.trim(), role: "user" }, JWT_SECRET, { expiresIn: "7d" });
   res.json({ token, user: { id, name: name.trim() } });
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authRateLimit, async (req, res) => {
   const { name, password } = req.body;
   if (!name?.trim() || !password) return res.status(400).json({ error: "이름과 비밀번호를 입력해주세요." });
 
@@ -222,7 +265,7 @@ app.post("/api/auth/login", async (req, res) => {
   const valid = await bcrypt.compare(password, user.hash);
   if (!valid) return res.status(401).json({ error: "비밀번호가 틀렸어요." });
 
-  const token = jwt.sign({ id: user.id, name: user.name }, JWT_SECRET, { expiresIn: "30d" });
+  const token = jwt.sign({ id: user.id, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
   res.json({ token, user: { id: user.id, name: user.name } });
 });
 
@@ -654,14 +697,14 @@ app.post("/api/push-subscribe", authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete("/api/push-unsubscribe", async (req, res) => {
+app.delete("/api/push-unsubscribe", authMiddleware, async (req, res) => {
   const { clientId } = req.body;
   subscriptions.delete(clientId);
   try { await db.delete(pushSubscriptions).where(eq(pushSubscriptions.clientId, clientId)); } catch {}
   res.json({ ok: true });
 });
 
-app.post("/api/push-test", async (req, res) => {
+app.post("/api/push-test", authMiddleware, adminOnly, async (req, res) => {
   const { userId } = req.body;
   const targets = [...subscriptions.entries()].filter(([, sub]) => {
     if (userId && sub.userId) return sub.userId === userId;
@@ -978,6 +1021,77 @@ app.get("/api/report/:dogId", authMiddleware, async (req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." }); }
+});
+
+// ── 사용자 피드백 + 관리자 알림 ──────────────────────────────────────────────
+app.post("/api/feedback", authMiddleware, async (req, res) => {
+  const { message } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: "내용을 입력해주세요." });
+
+  const userName = req.user.name || "사용자";
+  console.log(`[피드백] ${userName}: ${message.trim()}`);
+
+  // 관리자에게 푸시 알림 전송
+  try {
+    const adminRows = await db.select().from(users).where(eq(users.role, "admin"));
+    const adminIds = new Set(adminRows.map((a) => a.id));
+    const adminSubs = [...subscriptions.entries()].filter(([, s]) => adminIds.has(s.userId));
+    const payload = JSON.stringify({
+      title: `피드백: ${userName}`,
+      body: message.trim().slice(0, 200),
+      icon: "/icons/icon-192x192.png",
+    });
+    for (const [clientId, sub] of adminSubs) {
+      try {
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, payload);
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) subscriptions.delete(clientId);
+      }
+    }
+  } catch (e) { console.error("관리자 알림 전송 실패:", e.message); }
+
+  res.json({ ok: true });
+});
+
+// ── 데이터 내보내기 CSV ──────────────────────────────────────────────────────
+function csvSafe(str) {
+  const s = String(str ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) return `'${s}`;
+  return s;
+}
+app.get("/api/export/:dogId", authMiddleware, async (req, res) => {
+  const { dogId } = req.params;
+  try {
+    const [dogRows, logRows, weightRows, vaccineRows, vetRows] = await Promise.all([
+      db.select().from(dogs).where(and(eq(dogs.id, dogId), eq(dogs.userId, req.user.id))),
+      db.select().from(dailyLogs).where(and(eq(dailyLogs.dogId, dogId), eq(dailyLogs.userId, req.user.id))).orderBy(dailyLogs.date),
+      db.select().from(weightRecords).where(and(eq(weightRecords.dogId, dogId), eq(weightRecords.userId, req.user.id))).orderBy(weightRecords.date),
+      db.select().from(vaccines).where(and(eq(vaccines.dogId, dogId), eq(vaccines.userId, req.user.id))).orderBy(vaccines.date),
+      db.select().from(vetVisits).where(eq(vetVisits.userId, req.user.id)).orderBy(vetVisits.visitDate),
+    ]);
+    if (!dogRows[0]) return res.status(404).json({ error: "강아지를 찾을 수 없어요." });
+    const dog = dogRows[0];
+    const MEAL = ["안먹음", "조금", "보통", "잘먹음"];
+    const ENERGY = ["축처짐", "보통", "활발"];
+    const BOM = "\uFEFF";
+    let csv = BOM;
+    csv += `${dog.name} 건강 데이터 내보내기\n\n`;
+    csv += "=== 일일 건강 기록 ===\n";
+    csv += "날짜,식사,기력,산책,배변,소변,메모\n";
+    for (const l of logRows) {
+      csv += `${l.date},${MEAL[l.meal]},${ENERGY[l.energy]},${l.walk ? "O" : ""},${l.poop ? "O" : ""},${l.pee ? "O" : ""},"${csvSafe((l.memo || "").replace(/"/g, '""'))}"\n`;
+    }
+    csv += "\n=== 체중 기록 ===\n날짜,체중(kg)\n";
+    for (const w of weightRows) csv += `${w.date},${w.weight}\n`;
+    csv += "\n=== 예방접종 ===\n백신명,접종일,병원,다음접종\n";
+    for (const v of vaccineRows) csv += `${csvSafe(v.vaccineName)},${v.date},${csvSafe(v.hospitalName || "")},${v.nextDate || ""}\n`;
+    csv += "\n=== 검진 기록 ===\n날짜,병원,진단,금액\n";
+    for (const v of vetRows) csv += `${v.visitDate},${csvSafe(v.hospitalName)},"${csvSafe((v.diagnosis || "").replace(/"/g, '""'))}",${v.totalPrice || 0}\n`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(dog.name)}_health_data.csv"`);
+    res.send(csv);
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류" }); }
 });
 
 // ── 자동 푸시 알림 (생일 + 예방약) ────────────────────────────────────────────

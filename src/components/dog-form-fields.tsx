@@ -1,6 +1,7 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { UseFormReturn } from "react-hook-form";
-import { Camera } from "lucide-react";
+import { Camera, Search } from "lucide-react";
+import { searchBreeds, type BreedEntry } from "@/lib/dog-breeds";
 import {
   FormControl,
   FormField,
@@ -17,6 +18,78 @@ interface DogFormFieldsProps {
   form: UseFormReturn<DogInput>;
   photoPreview: string | null;
   onPhotoChange: (preview: string, base64: string) => void;
+}
+
+function BreedAutocomplete({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState(value || "");
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<BreedEntry[]>([]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setQuery(value || ""); }, [value]);
+
+  useEffect(() => {
+    setResults(searchBreeds(query));
+  }, [query]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="relative">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => { setTimeout(() => { if (query.trim()) onChange(query.trim()); }, 200); }}
+          placeholder="견종 검색 (예: 푸들, 말티즈)"
+          className="w-full h-12 pl-10 pr-4 rounded-xl bg-secondary/50 border-transparent text-lg focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+        />
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute z-50 top-full mt-1 w-full bg-card border border-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
+          {results.map((breed) => (
+            <button
+              key={breed.name}
+              type="button"
+              onClick={() => {
+                setQuery(breed.name);
+                onChange(breed.name);
+                setOpen(false);
+              }}
+              className={cn(
+                "w-full text-left px-4 py-2.5 text-sm hover:bg-secondary transition-colors flex items-center justify-between",
+                value === breed.name && "bg-primary/5 font-bold text-primary"
+              )}
+            >
+              <span>{breed.name}</span>
+              <span className="text-[11px] text-muted-foreground">{breed.size}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {open && query.trim() && results.length === 0 && (
+        <div className="absolute z-50 top-full mt-1 w-full bg-card border border-border rounded-xl shadow-lg px-4 py-3">
+          <p className="text-xs text-muted-foreground">목록에 없으면 그대로 입력해도 됩니다</p>
+          <button
+            type="button"
+            onClick={() => { onChange(query.trim()); setOpen(false); }}
+            className="mt-1 text-sm font-semibold text-primary"
+          >
+            "{query.trim()}" 사용하기
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function DogFormFields({ form, photoPreview, onPhotoChange }: DogFormFieldsProps) {
@@ -110,7 +183,7 @@ export function DogFormFields({ form, photoPreview, onPhotoChange }: DogFormFiel
           <FormItem className="col-span-2">
             <FormLabel className="font-semibold text-foreground/80">견종</FormLabel>
             <FormControl>
-              <Input placeholder="푸들" {...field} className="bg-secondary/50 border-transparent focus-visible:bg-background focus-visible:ring-primary/20 focus-visible:border-primary h-12 rounded-xl text-lg" />
+              <BreedAutocomplete value={field.value} onChange={field.onChange} />
             </FormControl>
             <FormMessage />
           </FormItem>

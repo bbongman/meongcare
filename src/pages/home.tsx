@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Stethoscope, ChevronRight, Pencil } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Stethoscope, ChevronRight, Pencil, Share2, Timer, Square, Star, Phone } from "lucide-react";
 import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { InstallGuideDialog } from "@/components/install-guide-dialog";
@@ -12,9 +12,12 @@ import { AddDogDialog } from "@/components/add-dog-dialog";
 import { EditDogDialog } from "@/components/edit-dog-dialog";
 import { DailyCheckDialog } from "@/components/daily-check-dialog";
 import { useDailyLog } from "@/hooks/use-daily-log";
-import { useSchedules, useAddSchedule, syncSchedulesToServer } from "@/hooks/use-schedules";
+import { useSchedules, useAddSchedule, syncSchedulesToServer, SCHEDULE_LABELS } from "@/hooks/use-schedules";
 import { useVetVisits } from "@/hooks/use-vet-visits";
 import { usePreventionMeds, MED_LABELS, type MedType } from "@/hooks/use-prevention-meds";
+import { useWeightHistory } from "@/hooks/use-weight-history";
+import { useScheduleCheck } from "@/hooks/use-schedule-check";
+import { getFavVets } from "@/hooks/use-fav-vets";
 import { useAllUpcomingVaccines } from "@/hooks/use-vaccines";
 import { differenceInDays } from "date-fns";
 import { format } from "date-fns";
@@ -23,11 +26,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { MEAL_LABEL, ENERGY_LABEL, ENERGY_COLOR } from "@/lib/constants";
+import { getBreedDiseases } from "@/lib/breed-diseases";
+import { getDisplayAge, getBirthdayDiff, toHumanAge, getHealthTip } from "@/lib/dog-utils";
 import { motion, AnimatePresence } from "framer-motion";
-
-const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
-const ENERGY_LABEL = ["축처짐", "보통", "활발"];
-const ENERGY_COLOR = ["text-blue-400", "text-green-500", "text-orange-400"];
 
 function TodayConditionBadge({ dogId }: { dogId: string }) {
   const { todayLog } = useDailyLog(dogId);
@@ -43,6 +45,76 @@ function TodayConditionBadge({ dogId }: { dogId: string }) {
       </div>
     </div>
   );
+}
+
+function WalkTimerWidget({ dogId }: { dogId: string }) {
+  const { todayLog, saveLog } = useDailyLog(dogId);
+  const storageKey = `walk_timer_${dogId}`;
+  const [startTime, setStartTime] = useState<number | null>(() => {
+    const v = localStorage.getItem(storageKey);
+    return v ? parseInt(v) : null;
+  });
+  const [elapsed, setElapsed] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    if (!startTime) { setElapsed(0); return; }
+    const tick = () => setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    tick();
+    intervalRef.current = setInterval(tick, 1000);
+    return () => clearInterval(intervalRef.current);
+  }, [startTime]);
+
+  function handleStart() {
+    const now = Date.now();
+    localStorage.setItem(storageKey, String(now));
+    setStartTime(now);
+  }
+
+  function handleStop() {
+    const mins = Math.round(elapsed / 60);
+    localStorage.removeItem(storageKey);
+    setStartTime(null);
+    const prevMemo = todayLog?.memo ?? "";
+    const walkMemo = `산책 ${mins}분`;
+    saveLog({
+      meal: todayLog?.meal ?? 2,
+      walk: true,
+      poop: todayLog?.poop ?? false,
+      pee: todayLog?.pee ?? false,
+      energy: todayLog?.energy ?? 1,
+      memo: prevMemo ? `${prevMemo}\n${walkMemo}` : walkMemo,
+    });
+  }
+
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
+
+  if (startTime) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-3xl p-5"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🦮</span>
+            <p className="text-xs font-bold text-green-700">산책 중</p>
+          </div>
+          <p className="text-2xl font-bold text-green-600 tabular-nums">{mm}:{ss}</p>
+        </div>
+        <button
+          onClick={handleStop}
+          className="w-full py-3 rounded-2xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 transition-colors"
+        >
+          <Square className="w-4 h-4" />산책 종료 및 기록
+        </button>
+      </motion.div>
+    );
+  }
+
+  return null;
 }
 
 function TodayCheckButton({ dogId, onClick, hasLog }: { dogId: string; onClick: () => void; hasLog: boolean }) {
@@ -62,10 +134,8 @@ function TodayStatusCard({ dogId, dogName, onEdit }: { dogId: string; dogName?: 
 
   if (!todayLog) return null;
 
-  const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
-  const MEAL_COLOR = ["bg-gray-300", "bg-yellow-300", "bg-orange-400", "bg-orange-500"];
-  const ENERGY_LABEL = ["축처짐", "보통", "활발"];
-  const ENERGY_COLOR = ["bg-blue-300", "bg-green-400", "bg-orange-400"];
+  const MEAL_BG = ["bg-gray-300", "bg-yellow-300", "bg-orange-400", "bg-orange-500"];
+  const ENERGY_BG = ["bg-blue-300", "bg-green-400", "bg-orange-400"];
 
   const recent = recentLogs(7);
   const chartData = Array.from({ length: 7 }, (_, i) => {
@@ -104,7 +174,7 @@ function TodayStatusCard({ dogId, dogName, onEdit }: { dogId: string; dogName?: 
           </div>
           <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
             <div
-              className={cn("h-full rounded-full transition-all duration-500", MEAL_COLOR[todayLog.meal])}
+              className={cn("h-full rounded-full transition-all duration-500", MEAL_BG[todayLog.meal])}
               style={{ width: `${(todayLog.meal / 3) * 100}%` }}
             />
           </div>
@@ -116,7 +186,7 @@ function TodayStatusCard({ dogId, dogName, onEdit }: { dogId: string; dogName?: 
           </div>
           <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
             <div
-              className={cn("h-full rounded-full transition-all duration-500", ENERGY_COLOR[todayLog.energy])}
+              className={cn("h-full rounded-full transition-all duration-500", ENERGY_BG[todayLog.energy])}
               style={{ width: `${(todayLog.energy / 2) * 100}%` }}
             />
           </div>
@@ -181,72 +251,6 @@ function TodayStatusCard({ dogId, dogName, onEdit }: { dogId: string; dogName?: 
   );
 }
 
-function getDisplayAge(dog: Dog): number {
-  if (dog.birthday) {
-    const birthDate = new Date(dog.birthday + "T00:00:00");
-    if (!isNaN(birthDate.getTime())) {
-      return Math.floor((Date.now() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    }
-  }
-  return dog.age;
-}
-
-function getBirthdayDiff(birthday: string): number | null {
-  const parts = birthday.split("-");
-  if (parts.length < 3) return null;
-  const [, month, day] = parts;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thisYear = today.getFullYear();
-  let bday = new Date(`${thisYear}-${month}-${day}T00:00:00`);
-  let diff = Math.round((bday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff < 0) {
-    bday = new Date(`${thisYear + 1}-${month}-${day}T00:00:00`);
-    diff = Math.round((bday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  }
-  return diff;
-}
-
-function getHealthTip(dog: Dog): { emoji: string; title: string; body: string } {
-  const { breed, weight } = dog;
-  const age = getDisplayAge(dog);
-  const w = weight || 0;
-
-  // 몸무게 기반 보조 팁
-  const weightTip = w > 0
-    ? w < 4 ? `${w}kg 소형견은 저혈당에 취약하니 하루 2~3회 소량씩 나눠 급여하세요.`
-    : w < 10 ? `${w}kg 중소형견은 하루 사료량 ${Math.round(w * 20)}~${Math.round(w * 25)}g 정도가 적당해요.`
-    : w < 25 ? `${w}kg 중형견은 하루 사료량 ${Math.round(w * 15)}~${Math.round(w * 20)}g, 관절 건강에 신경 쓰세요.`
-    : `${w}kg 대형견은 하루 사료량 ${Math.round(w * 12)}~${Math.round(w * 15)}g, 고관절과 심장 관리가 중요해요.`
-    : "";
-
-  if (age <= 1) return {
-    emoji: "🍼",
-    title: `퍼피 시기 · ${breed}`,
-    body: `면역력이 약해요. 기초 예방접종(홍역·파보바이러스)을 꼭 완료하세요.${weightTip ? ` ${weightTip}` : " 성장기라 사료량을 점차 늘려주세요."}`,
-  };
-  if (age <= 3) return {
-    emoji: "⚡",
-    title: `활발한 청년기 · ${breed}`,
-    body: `에너지가 넘치는 시기예요. 하루 30분 이상 산책이 필요해요.${weightTip ? ` ${weightTip}` : ""}`,
-  };
-  if (age <= 7) return {
-    emoji: "💪",
-    title: `건강한 성년기 · ${breed}`,
-    body: `1년에 한 번 건강검진을 권장해요.${weightTip ? ` ${weightTip}` : " 치석이 쌓이기 쉬우니 주 2~3회 양치질이 중요해요."}`,
-  };
-  if (age <= 10) return {
-    emoji: "🏥",
-    title: `시니어 진입기 · ${breed}`,
-    body: `심장·관절 질환을 주의하세요. 6개월마다 혈액검사를 권장해요.${weightTip ? ` ${weightTip}` : ""}`,
-  };
-  return {
-    emoji: "❤️",
-    title: `노령견 케어 · ${breed}`,
-    body: `계단과 점프를 줄이고 관절 보조제를 고려하세요.${weightTip ? ` ${weightTip}` : " 식사량 변화나 음수량 증가에 주의하세요."}`,
-  };
-}
-
 function WeeklyHealthWidget({ dogId, dogName }: { dogId: string; dogName: string }) {
   const { recentLogs } = useDailyLog(dogId);
   const logs = recentLogs(7);
@@ -255,8 +259,6 @@ function WeeklyHealthWidget({ dogId, dogName }: { dogId: string; dogName: string
   const walkDays = logs.filter((l) => l.walk).length;
   const avgMeal = logs.reduce((s, l) => s + l.meal, 0) / logs.length;
   const avgEnergy = logs.reduce((s, l) => s + l.energy, 0) / logs.length;
-  const ENERGY_LABEL = ["축처짐", "보통", "활발"];
-  const MEAL_LABEL = ["안먹음", "조금", "보통", "잘먹음"];
   const energyIdx = Math.round(avgEnergy);
   const mealIdx = Math.round(avgMeal);
   const energyColor = energyIdx === 2 ? "text-orange-500" : energyIdx === 1 ? "text-green-500" : "text-blue-400";
@@ -284,15 +286,32 @@ function WeeklyHealthWidget({ dogId, dogName }: { dogId: string; dogName: string
 
 function HealthTipWidget({ dog }: { dog: Dog }) {
   const tip = getHealthTip(dog);
+  const breedInfo = getBreedDiseases(dog.breed);
   return (
-    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-4 flex items-start gap-3">
-      <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm shrink-0">
-        {tip.emoji}
+    <div className="space-y-3">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-4 flex items-start gap-3">
+        <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm shrink-0">
+          {tip.emoji}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-blue-600 mb-0.5">{dog.name} 건강 팁 · {tip.title}</p>
+          <p className="text-xs text-blue-800/80 leading-relaxed">{tip.body}</p>
+        </div>
       </div>
-      <div className="min-w-0">
-        <p className="text-xs font-bold text-blue-600 mb-0.5">{dog.name} 건강 팁 · {tip.title}</p>
-        <p className="text-xs text-blue-800/80 leading-relaxed">{tip.body}</p>
-      </div>
+      {breedInfo && (
+        <div className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-100 rounded-3xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-base">🔬</span>
+            <p className="text-xs font-bold text-rose-600">{dog.breed} 주의 질환</p>
+          </div>
+          <div className="flex gap-1.5 flex-wrap mb-2">
+            {breedInfo.diseases.map((d) => (
+              <span key={d} className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-rose-200 text-rose-600 font-semibold">{d}</span>
+            ))}
+          </div>
+          <p className="text-xs text-rose-700/80 leading-relaxed">{breedInfo.tip}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -374,15 +393,6 @@ function RecentVetVisitWidget() {
   );
 }
 
-function toHumanAge(dogAge: number, weight?: number): number {
-  const w = weight ?? 0;
-  const extra = w >= 25 ? 7 : w >= 10 ? 5 : 4;
-  if (dogAge <= 0) return 0;
-  if (dogAge === 1) return 15;
-  if (dogAge === 2) return 24;
-  return 24 + (dogAge - 2) * extra;
-}
-
 function UpcomingVaccineWidget() {
   const upcoming = useAllUpcomingVaccines();
   const [, setLocation] = useLocation();
@@ -449,6 +459,206 @@ function PreventionMedsWidget({ dogId }: { dogId: string }) {
           <span key={t} className="text-xs px-2.5 py-1 rounded-full bg-white border border-amber-200 text-amber-700 font-semibold flex items-center gap-1">
             {MED_LABELS[t].emoji} {MED_LABELS[t].label}
           </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TodayScheduleWidget() {
+  const { data: schedules = [] } = useSchedules();
+  const { isChecked, toggle } = useScheduleCheck();
+  const [, setLocation] = useLocation();
+
+  const now = new Date();
+
+  const todaySchedules = schedules
+    .filter((s) => {
+      if (!s.enabled) return false;
+      if (s.repeat === "daily") return true;
+      if (s.repeat === "weekly") return true;
+      if (s.repeat === "monthly") return true;
+      if (s.repeat === "none") {
+        const created = new Date(s.createdAt);
+        return created.toDateString() === now.toDateString();
+      }
+      return false;
+    })
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  const remaining = todaySchedules.filter((s) => !isChecked(s.id));
+  const doneCount = todaySchedules.length - remaining.length;
+
+  if (todaySchedules.length === 0) return null;
+
+  return (
+    <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 rounded-3xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-sm text-base">
+            <CalendarClock className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-indigo-700">오늘 할 일</p>
+            {doneCount > 0 && (
+              <p className="text-[10px] text-indigo-400">{doneCount}개 완료 / {todaySchedules.length}개</p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => setLocation("/schedule")}
+          className="text-[11px] font-semibold text-indigo-600 flex items-center gap-0.5"
+        >
+          전체보기 <ChevronRight className="w-3 h-3" />
+        </button>
+      </div>
+      {remaining.length === 0 ? (
+        <div className="bg-white/70 rounded-xl px-3 py-2.5 text-center">
+          <p className="text-xs text-green-600 font-semibold">오늘 일정 모두 완료!</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {todaySchedules.slice(0, 5).map((s) => {
+            const done = isChecked(s.id);
+            return (
+              <div key={s.id} className={cn("rounded-xl px-3 py-2.5 flex items-center gap-3 transition-all", done ? "bg-white/40" : "bg-white/70")}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggle(s.id); }}
+                  className={cn(
+                    "w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors",
+                    done ? "bg-green-500 border-green-500 text-white" : "border-indigo-300 hover:border-indigo-500"
+                  )}
+                >
+                  {done && <span className="text-[10px] font-bold">✓</span>}
+                </button>
+                <span className={cn("text-base", done && "opacity-40")}>{SCHEDULE_LABELS[s.type]?.emoji ?? "📌"}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-sm font-semibold truncate", done ? "text-muted-foreground line-through" : "text-foreground")}>{s.title}</p>
+                </div>
+                <span className={cn("text-xs font-bold shrink-0", done ? "text-muted-foreground/50" : "text-indigo-600")}>{s.time}</span>
+              </div>
+            );
+          })}
+          {todaySchedules.length > 5 && (
+            <p className="text-[11px] text-center text-indigo-400">+{todaySchedules.length - 5}개 더</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WeightAlertWidget({ dogId, dogName }: { dogId: string; dogName: string }) {
+  const { user } = useAuth();
+  const { records } = useWeightHistory(dogId);
+  const [, setLocation] = useLocation();
+  const storageKey = `weight_target_${user?.id}_${dogId}`;
+  const targetWeight = (() => {
+    const v = localStorage.getItem(storageKey);
+    return v ? parseFloat(v) : null;
+  })();
+
+  if (!targetWeight || records.length === 0) return null;
+
+  const latest = records[records.length - 1];
+  const diff = latest.weight - targetWeight;
+  if (diff <= 0) return null;
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-3xl p-4 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-sm text-xl shrink-0">
+        <span>⚖️</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold text-red-600">{dogName} 체중 목표 초과!</p>
+        <p className="text-sm font-semibold text-foreground">
+          {latest.weight}kg <span className="text-red-500">(+{diff.toFixed(1)}kg)</span>
+        </p>
+        <p className="text-xs text-muted-foreground">목표 {targetWeight}kg</p>
+      </div>
+      <button
+        onClick={() => setLocation("/health")}
+        className="text-[11px] font-semibold text-red-500 shrink-0"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+function HealthAlertBanner({ dogId, dogName }: { dogId: string; dogName: string }) {
+  const { recentLogs } = useDailyLog(dogId);
+  const [, setLocation] = useLocation();
+  const logs = recentLogs(3);
+  if (logs.length < 2) return null;
+
+  const alerts: string[] = [];
+  if (logs.every((l) => l.meal === 0)) alerts.push("식사를 거부하고 있어요");
+  if (logs.every((l) => l.energy === 0)) alerts.push("기력이 계속 떨어져 있어요");
+  if (logs.length >= 3 && logs.every((l) => !l.poop)) alerts.push("3일째 배변이 없어요");
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-3xl p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-base">🚨</span>
+        <p className="text-xs font-bold text-red-600">{dogName} 건강 주의</p>
+      </div>
+      <ul className="space-y-1 mb-3">
+        {alerts.map((a) => (
+          <li key={a} className="text-sm text-red-700 font-semibold flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />{a}
+          </li>
+        ))}
+      </ul>
+      <button
+        onClick={() => setLocation("/health")}
+        className="w-full py-2.5 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors"
+      >
+        AI 문진으로 확인하기
+      </button>
+    </div>
+  );
+}
+
+function FavVetsWidget() {
+  const favs = getFavVets();
+  const [, setLocation] = useLocation();
+  if (favs.length === 0) return null;
+
+  return (
+    <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-100 rounded-3xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-sm text-base">
+            <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+          </div>
+          <p className="text-xs font-bold text-amber-700">즐겨찾기 병원</p>
+        </div>
+        <button
+          onClick={() => setLocation("/map")}
+          className="text-[11px] font-semibold text-amber-600 flex items-center gap-0.5"
+        >
+          지도 <ChevronRight className="w-3 h-3" />
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {favs.slice(0, 3).map((fav) => (
+          <div key={fav.id} className="bg-white/70 rounded-xl px-3 py-2.5 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">{fav.name}</p>
+              {fav.phone && <p className="text-xs text-muted-foreground">{fav.phone}</p>}
+            </div>
+            {fav.phone && (
+              <a
+                href={`tel:${fav.phone}`}
+                className="w-8 h-8 bg-green-50 border border-green-100 rounded-xl flex items-center justify-center text-green-600 shrink-0"
+              >
+                <Phone className="w-3.5 h-3.5" />
+              </a>
+            )}
+          </div>
         ))}
       </div>
     </div>
@@ -550,8 +760,11 @@ export default function Home() {
       localStorage.setItem("pwa_install_prompted", "1");
     }
   }
-  const firstDogId = dogs?.[0]?.id ?? "";
-  const { todayLog: firstDogTodayLog } = useDailyLog(firstDogId);
+  const [activeDogIdx, setActiveDogIdx] = useState(0);
+  const activeDog = dogs?.[activeDogIdx] ?? dogs?.[0];
+  const activeDogId = activeDog?.id ?? "";
+  const { todayLog: firstDogTodayLog } = useDailyLog(activeDogId);
+  const [walkTimerKey, setWalkTimerKey] = useState(0);
 
   const profileEmoji = user?.gender === "male" ? "👨🏻" : user?.gender === "female" ? "👩🏻" : "🧑🏻";
 
@@ -667,12 +880,30 @@ export default function Home() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        className="text-muted-foreground/50 hover:text-foreground transition-colors p-1"
-                        onClick={() => setEditingDog(dog)}
-                      >
-                        <MoreHorizontal className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="text-muted-foreground/50 hover:text-primary transition-colors p-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const age = getDisplayAge(dog);
+                            const humanAge = toHumanAge(age, dog.weight);
+                            const text = `[멍케어] ${dog.name} 프로필\n\n${dog.breed} · ${dog.gender === "male" ? "남아" : "여아"}${dog.neutered ? " (중성화)" : ""}\n나이: ${age}살 (사람 나이 ${humanAge}살)\n${dog.weight ? `몸무게: ${dog.weight}kg` : ""}`;
+                            if (navigator.share) {
+                              navigator.share({ title: `${dog.name} 프로필`, text });
+                            } else {
+                              navigator.clipboard.writeText(text);
+                            }
+                          }}
+                        >
+                          <Share2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          className="text-muted-foreground/50 hover:text-foreground transition-colors p-1"
+                          onClick={() => setEditingDog(dog)}
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
 
                     {dog.birthday && (() => {
@@ -714,8 +945,41 @@ export default function Home() {
               </AnimatePresence>
             </div>
 
+            {/* 다견가정 전환 */}
+            {dogs.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {dogs.map((dog, i) => (
+                  <button
+                    key={dog.id}
+                    onClick={() => setActiveDogIdx(i)}
+                    className={cn(
+                      "shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5",
+                      activeDogIdx === i
+                        ? "bg-primary text-white border-primary"
+                        : "bg-card border-border/50 text-muted-foreground"
+                    )}
+                  >
+                    {dog.photo ? (
+                      <img src={dog.photo} alt="" className="w-4 h-4 rounded-full object-cover" />
+                    ) : (
+                      <span className="text-xs">🐕</span>
+                    )}
+                    {dog.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 건강 이상 감지 */}
+            {dogs.map((dog) => (
+              <HealthAlertBanner key={`alert-${dog.id}`} dogId={dog.id} dogName={dog.name} />
+            ))}
+
             {/* 주간 건강 요약 */}
-            <WeeklyHealthWidget dogId={dogs[0].id} dogName={dogs[0].name} />
+            <WeeklyHealthWidget dogId={activeDog.id} dogName={activeDog.name} />
+
+            {/* 오늘 할 일 요약 */}
+            <TodayScheduleWidget />
 
             {/* 푸시 알림 허용 유도 */}
             <PushNotifBanner />
@@ -724,13 +988,19 @@ export default function Home() {
             <DailyReminderBanner />
 
             {/* 이번 달 예방약 미완료 */}
-            <PreventionMedsWidget dogId={dogs[0].id} />
+            <PreventionMedsWidget dogId={activeDog.id} />
+
+            {/* 체중 목표 초과 알림 */}
+            <WeightAlertWidget dogId={activeDog.id} dogName={activeDog.name} />
 
             {/* 예방접종 예정 알림 */}
             <UpcomingVaccineWidget />
 
             {/* 다음 진료 예정 */}
             <UpcomingVetWidget />
+
+            {/* 즐겨찾기 병원 */}
+            <FavVetsWidget />
 
             {/* 최근 검진 기록 */}
             <RecentVetVisitWidget />
@@ -748,6 +1018,9 @@ export default function Home() {
               </div>
             )}
 
+            {/* 산책 타이머 (진행 중일 때만) */}
+            <WalkTimerWidget key={walkTimerKey} dogId={activeDog.id} />
+
             {/* 오늘 컨디션 카드 — 모든 강아지 */}
             <AnimatePresence>
               {dogs.map((dog) => (
@@ -759,7 +1032,23 @@ export default function Home() {
             <div className="mt-2 space-y-4">
               <h2 className="text-xl font-bold text-foreground mb-4">빠른 실행</h2>
               <div className="grid grid-cols-2 gap-4">
-                <TodayCheckButton dogId={dogs[0].id} onClick={() => setDailyCheckOpen(true)} hasLog={!!firstDogTodayLog} />
+                <TodayCheckButton dogId={activeDog.id} onClick={() => setDailyCheckOpen(true)} hasLog={!!firstDogTodayLog} />
+                <div
+                  className="bg-green-50/80 border border-green-100 rounded-3xl p-5 cursor-pointer hover:bg-green-100 transition-colors group"
+                  onClick={() => {
+                    const key = `walk_timer_${activeDog.id}`;
+                    if (!localStorage.getItem(key)) {
+                      localStorage.setItem(key, String(Date.now()));
+                      setWalkTimerKey((k) => k + 1);
+                    }
+                  }}
+                >
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-green-500 mb-4 group-hover:scale-110 transition-transform">
+                    <Timer className="w-6 h-6 stroke-[2.5px]" />
+                  </div>
+                  <h3 className="font-bold text-foreground">산책 시작</h3>
+                  <p className="text-xs font-medium text-muted-foreground mt-1">타이머로 기록하기</p>
+                </div>
                 <div
                   className="bg-purple-50/80 border border-purple-100 rounded-3xl p-5 cursor-pointer hover:bg-purple-100 transition-colors group"
                   onClick={() => setLocation("/schedule")}

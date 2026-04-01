@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useHealthHistory, HistoryItem, ConsultationResult, TranslationResult, ProductResult, BehaviorResult, FoodResult } from "@/hooks/use-health-history";
-import { Trash2, ChevronDown, ChevronUp, Share2, LayoutList, LayoutGrid } from "lucide-react";
+import { useDogs } from "@/hooks/use-dogs";
+import { useDailyLog } from "@/hooks/use-daily-log";
+import { Trash2, ChevronDown, ChevronUp, Share2, LayoutList, LayoutGrid, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -369,26 +371,144 @@ const FILTERS: { id: FilterType; label: string; emoji: string }[] = [
   { id: "food", label: "음식", emoji: "🍖" },
 ];
 
-export function HistoryTab() {
-  const { history, removeItem, clearAll } = useHealthHistory();
-  const [filter, setFilter] = useState<FilterType>("all");
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [cardView, setCardView] = useState(false);
+import { MEAL_LABEL, ENERGY_LABEL } from "@/lib/constants";
 
-  const filtered = filter === "all" ? history : history.filter((i) => i.type === filter);
+interface TimelineEntry {
+  date: string;
+  type: "log" | "consultation";
+  meal?: number;
+  energy?: number;
+  walk?: boolean;
+  memo?: string;
+  urgency?: string;
+  summary?: string;
+}
 
-  if (history.length === 0) {
+function SymptomTimeline() {
+  const { data: dogs = [] } = useDogs();
+  const { history } = useHealthHistory();
+  const dogId = dogs[0]?.id ?? "";
+  const { allLogs } = useDailyLog(dogId);
+
+  const entries: TimelineEntry[] = [];
+
+  for (const log of allLogs) {
+    if (log.memo || log.meal === 0 || log.energy === 0) {
+      entries.push({ date: log.date, type: "log", meal: log.meal, energy: log.energy, walk: log.walk, memo: log.memo });
+    }
+  }
+
+  for (const item of history) {
+    if (item.type === "consultation") {
+      const r = item.result as ConsultationResult;
+      entries.push({ date: item.date.slice(0, 10), type: "consultation", urgency: r.urgency, summary: r.summary });
+    }
+  }
+
+  entries.sort((a, b) => b.date.localeCompare(a.date));
+  const recent = entries.slice(0, 30);
+
+  if (recent.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <span className="text-4xl mb-3">📋</span>
-        <p className="font-bold text-foreground">기록이 없어요</p>
-        <p className="text-sm text-muted-foreground mt-1">AI 문진, 번역기, 제품 분석 결과가 여기 쌓여요</p>
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <span className="text-4xl mb-3">📊</span>
+        <p className="font-bold text-foreground">타임라인이 비어있어요</p>
+        <p className="text-sm text-muted-foreground mt-1">메모가 있는 일일 기록이나 AI 문진 결과가 여기 표시돼요</p>
       </div>
     );
   }
 
   return (
+    <div className="relative pl-6">
+      <div className="absolute left-2.5 top-0 bottom-0 w-px bg-border" />
+      <div className="space-y-4">
+        {recent.map((entry, i) => (
+          <div key={`${entry.date}-${entry.type}-${i}`} className="relative">
+            <div className={cn(
+              "absolute -left-6 top-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-background",
+              entry.type === "consultation" ? "bg-blue-500 text-white" : "bg-secondary text-muted-foreground"
+            )}>
+              {entry.type === "consultation" ? "🩺" : "📝"}
+            </div>
+            <div className="bg-card border border-border/50 rounded-2xl p-3">
+              <p className="text-[11px] text-muted-foreground font-medium mb-1">
+                {format(new Date(entry.date + "T00:00:00"), "M월 d일 (EEE)", { locale: ko })}
+              </p>
+              {entry.type === "consultation" ? (
+                <div>
+                  <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full",
+                    entry.urgency === "now" ? "bg-red-100 text-red-700" :
+                    entry.urgency === "tomorrow" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
+                  )}>
+                    {URGENCY_CONFIG[entry.urgency!]?.label}
+                  </span>
+                  <p className="text-sm text-foreground mt-1.5 leading-relaxed">{entry.summary}</p>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex gap-2 flex-wrap mb-1">
+                    {entry.meal !== undefined && entry.meal <= 1 && (
+                      <span className="text-xs font-semibold text-red-500">식사: {MEAL_LABEL[entry.meal]}</span>
+                    )}
+                    {entry.energy !== undefined && entry.energy === 0 && (
+                      <span className="text-xs font-semibold text-blue-500">기력: {ENERGY_LABEL[entry.energy]}</span>
+                    )}
+                    {entry.walk && <span className="text-xs text-green-600">산책O</span>}
+                  </div>
+                  {entry.memo && <p className="text-sm text-foreground leading-relaxed">{entry.memo}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function HistoryTab() {
+  const { history, removeItem, clearAll } = useHealthHistory();
+  const [filter, setFilter] = useState<FilterType>("all");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [cardView, setCardView] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+
+  const filtered = filter === "all" ? history : history.filter((i) => i.type === filter);
+
+  return (
     <div className="space-y-3">
+      {/* 모드 전환 */}
+      <div className="flex gap-2 mb-2">
+        <button
+          onClick={() => setShowTimeline(false)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all",
+            !showTimeline ? "bg-primary text-white border-primary" : "bg-card text-muted-foreground border-border/50"
+          )}
+        >
+          <LayoutList className="w-3.5 h-3.5" />분석 기록
+        </button>
+        <button
+          onClick={() => setShowTimeline(true)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all",
+            showTimeline ? "bg-primary text-white border-primary" : "bg-card text-muted-foreground border-border/50"
+          )}
+        >
+          <Clock className="w-3.5 h-3.5" />증상 타임라인
+        </button>
+      </div>
+
+      {showTimeline ? (
+        <SymptomTimeline />
+      ) : history.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <span className="text-4xl mb-3">📋</span>
+          <p className="font-bold text-foreground">기록이 없어요</p>
+          <p className="text-sm text-muted-foreground mt-1">AI 문진, 번역기, 제품 분석 결과가 여기 쌓여요</p>
+        </div>
+      ) : (
+      <>
       {/* 필터 + 뷰 토글 */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
         {FILTERS.map((f) => (
@@ -448,6 +568,8 @@ export function HistoryTab() {
               : <ListCard key={item.id} item={item} onRemove={() => removeItem(item.id)} />
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );

@@ -4,14 +4,16 @@ import { TranslatorTab } from "@/components/health/TranslatorTab";
 import { ProductTab } from "@/components/health/ProductTab";
 import { FoodCheckTab } from "@/components/health/FoodCheckTab";
 import { BehaviorTab } from "@/components/health/BehaviorTab";
+import { FeedingCalcTab } from "@/components/health/FeedingCalcTab";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Tab = "behavior" | "food" | "product" | "translator";
+type Tab = "behavior" | "food" | "product" | "translator" | "feeding";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "behavior", label: "행동 & 훈련", emoji: "🐕‍🦺" },
   { id: "food", label: "음식 체크", emoji: "🍖" },
+  { id: "feeding", label: "급여량", emoji: "🍽️" },
   { id: "product", label: "제품 분석", emoji: "🔍" },
   { id: "translator", label: "번역기", emoji: "🐾" },
 ];
@@ -61,6 +63,7 @@ export default function AiTools() {
           >
             {activeTab === "behavior" && <BehaviorTab />}
             {activeTab === "food" && <FoodCheckTab />}
+            {activeTab === "feeding" && <FeedingCalcTab />}
             {activeTab === "product" && <ProductTab />}
             {activeTab === "translator" && <TranslatorTab />}
           </motion.div>

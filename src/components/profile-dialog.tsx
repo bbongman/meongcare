@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Download } from "lucide-react";
+import { Check, Download, MessageSquare, Send } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,6 +12,21 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const [memo, setMemo] = useState(user?.memo || "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
+
+  async function handleFeedback() {
+    if (!feedbackText.trim()) return;
+    setFeedbackSending(true);
+    try {
+      await apiFetch("/api/feedback", { method: "POST", body: JSON.stringify({ message: feedbackText.trim() }) });
+      setFeedbackSent(true);
+      setTimeout(() => { setFeedbackSent(false); setFeedbackOpen(false); setFeedbackText(""); }, 1500);
+    } catch {}
+    setFeedbackSending(false);
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -99,13 +114,44 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           {saved ? <><Check className="w-4 h-4" /> 저장 완료</> : saving ? "저장 중..." : "저장하기"}
         </button>
 
-        <button
-          onClick={handleExport}
-          className="w-full h-10 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2"
-        >
-          <Download className="w-4 h-4" /> 데이터 내보내기 (JSON 백업)
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExport}
+            className="flex-1 h-10 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2"
+          >
+            <Download className="w-4 h-4" /> 백업
+          </button>
+          <button
+            onClick={() => setFeedbackOpen(true)}
+            className="flex-1 h-10 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2"
+          >
+            <MessageSquare className="w-4 h-4" /> 의견 보내기
+          </button>
+        </div>
       </DialogContent>
+
+      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <DialogContent className="rounded-3xl max-w-sm mx-4 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">의견 보내기</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2">개선 아이디어, 불편한 점, 원하는 기능을 알려주세요</p>
+          <textarea
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            placeholder="여기에 자유롭게 작성해주세요..."
+            rows={4}
+            className="w-full px-4 py-3 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:border-primary resize-none"
+          />
+          <button
+            onClick={handleFeedback}
+            disabled={feedbackSending || !feedbackText.trim()}
+            className="w-full h-11 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+          >
+            {feedbackSent ? <><Check className="w-4 h-4" /> 전송 완료!</> : feedbackSending ? "전송 중..." : <><Send className="w-4 h-4" /> 보내기</>}
+          </button>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

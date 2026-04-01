@@ -5,7 +5,7 @@ import { useDogs } from "@/hooks/use-dogs";
 import { useHealthHistory } from "@/hooks/use-health-history";
 import { useDailyLog } from "@/hooks/use-daily-log";
 import { DogSelector } from "@/components/health/DogSelector";
-import { Loader2, Sparkles, AlertTriangle, CheckCircle, Clock, ChevronRight, MapPin, RotateCcw, BookmarkCheck } from "lucide-react";
+import { Loader2, Sparkles, AlertTriangle, CheckCircle, Clock, ChevronRight, MapPin, RotateCcw, BookmarkCheck, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -263,6 +263,19 @@ export function ConsultationTab() {
               <button onClick={handleReset}
                 className="flex-1 py-3.5 rounded-2xl border border-border/60 bg-card text-sm font-semibold text-foreground flex items-center justify-center gap-2 hover:bg-secondary transition-colors">
                 <RotateCcw className="w-4 h-4" />다시 분석
+              </button>
+              <button
+                onClick={() => {
+                  const text = `[멍케어 AI 문진 결과]\n\n응급도: ${config.label} ${config.emoji}\n${result.summary}\n\n케어 방법:\n${result.advice}${result.nextSteps?.length ? `\n\n체크리스트:\n${result.nextSteps.map((s) => `- ${s}`).join("\n")}` : ""}`;
+                  if (navigator.share) {
+                    navigator.share({ title: "멍케어 AI 문진 결과", text });
+                  } else {
+                    navigator.clipboard.writeText(text);
+                  }
+                }}
+                className="py-3.5 px-4 rounded-2xl border border-border/60 bg-card text-sm font-semibold text-foreground flex items-center justify-center gap-2 hover:bg-secondary transition-colors"
+              >
+                <Share2 className="w-4 h-4" />공유
               </button>
               {(result.urgency === "tomorrow" || result.urgency === "now") && (
                 <button onClick={() => navigate("/map")}

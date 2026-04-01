@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Layout } from "@/components/layout";
-import { Loader2, MapPin, Phone, Navigation, ExternalLink, Search } from "lucide-react";
+import { Loader2, MapPin, Phone, Navigation, ExternalLink, Search, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 declare global {
@@ -22,6 +22,8 @@ interface Place {
 }
 
 type Status = "idle" | "loading-sdk" | "loading-location" | "loading-search" | "ready" | "error";
+
+import { getFavVets, toggleFavVet } from "@/hooks/use-fav-vets";
 
 const CATEGORIES = [
   { label: "동물병원", emoji: "🏥", keywords: ["동물병원"] },
@@ -62,6 +64,7 @@ export default function Map() {
   const [isSearching, setIsSearching] = useState(false);
   const [radius, setRadius] = useState(3000);
   const [manualQuery, setManualQuery] = useState("");
+  const [favIds, setFavIds] = useState<Set<string>>(() => new Set(getFavVets().map((f) => f.id)));
 
   const apiKey = import.meta.env.VITE_KAKAO_MAP_KEY as string | undefined;
   const currentDomain = window.location.origin;
@@ -456,6 +459,21 @@ export default function Map() {
                   )}
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const updated = toggleFavVet(h);
+                      setFavIds(new Set(updated.map((f) => f.id)));
+                    }}
+                    className={cn(
+                      "w-8 h-8 border rounded-xl flex items-center justify-center transition-colors",
+                      favIds.has(h.id)
+                        ? "bg-amber-50 border-amber-200 text-amber-500"
+                        : "bg-secondary border-border/50 text-muted-foreground/40 hover:text-amber-400"
+                    )}
+                  >
+                    <Star className={cn("w-3.5 h-3.5", favIds.has(h.id) && "fill-current")} />
+                  </button>
                   {h.phone && (
                     <a
                       href={`tel:${h.phone}`}
