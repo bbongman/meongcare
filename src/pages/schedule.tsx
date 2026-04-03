@@ -140,10 +140,10 @@ export default function Schedule() {
       medicineName: selectedType === "medicine" ? medicineName : undefined,
       vaccineDate: selectedType === "vaccine" ? vaccineDate : undefined,
       enabled: true,
+    }, {
+      onSuccess: () => { setOpen(false); resetForm(); toast({ title: "스케줄이 추가됐어요!" }); },
+      onError: (err: any) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
     });
-    setOpen(false);
-    resetForm();
-    toast({ title: "스케줄이 추가됐어요!" });
   }
 
   function handleEditSubmit() {
@@ -166,10 +166,10 @@ export default function Schedule() {
         medicineName: selectedType === "medicine" ? medicineName : undefined,
         vaccineDate: selectedType === "vaccine" ? vaccineDate : undefined,
       },
+    }, {
+      onSuccess: () => { setEditTarget(null); resetForm(); toast({ title: "스케줄이 수정됐어요!" }); },
+      onError: (err: any) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
     });
-    setEditTarget(null);
-    resetForm();
-    toast({ title: "스케줄이 수정됐어요!" });
   }
 
   function openEdit(s: typeof schedules[0]) {
