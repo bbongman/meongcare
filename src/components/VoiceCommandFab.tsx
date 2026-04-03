@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Mic, MicOff, Send, Loader2, MessageCircle, X } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDogs } from "@/hooks/use-dogs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -291,7 +291,7 @@ export function VoiceCommandFab() {
         className="fixed bottom-[4.5rem] right-4 z-[55] w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center active:scale-90 transition-transform"
         aria-label="AI 입력"
       >
-        <MessageCircle className="w-5 h-5" />
+        <Mic className="w-5 h-5" />
       </button>
     );
   }
@@ -310,6 +310,30 @@ export function VoiceCommandFab() {
         </div>
 
         <div className="px-4 pb-2 space-y-3">
+          {/* 안내 (입력창 열린 상태에서만) */}
+          {sheetState === "open" && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">말하거나 텍스트로 입력하세요</p>
+              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                {[
+                  { label: "스케줄", example: "초코 내일 오전 10시 약 알림" },
+                  { label: "진료 기록", example: "오늘 강남동물병원 피부염 진단" },
+                  { label: "예방접종", example: "초코 오늘 광견병 맞았어" },
+                  { label: "체중", example: "초코 체중 4.5킬로" },
+                ].map(({ label, example }) => (
+                  <button
+                    key={label}
+                    onClick={() => { setText(example); inputRef.current?.focus(); }}
+                    className="text-left bg-secondary rounded-xl px-3 py-2 active:scale-95 transition-transform"
+                  >
+                    <p className="font-semibold text-foreground">{label}</p>
+                    <p className="text-muted-foreground/80 mt-0.5 leading-tight">{example}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 되묻기 */}
           {sheetState === "clarify" && result?.question && (
             <div className="bg-primary/10 rounded-xl p-3 space-y-2">
