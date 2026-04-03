@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
 import { Mic, MicOff, Send, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useDogs } from "@/hooks/use-dogs";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { format } from "date-fns";
+import { useLocation } from "wouter";
 
 type SheetState = "open" | "listening" | "processing" | "clarify" | "preview";
 
@@ -50,6 +52,7 @@ export function VoiceCommandFab() {
   const { data: dogs = [] } = useDogs();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const today = format(new Date(), "yyyy-MM-dd");
   const speechSupported =
@@ -241,7 +244,21 @@ export function VoiceCommandFab() {
         queryClient.invalidateQueries({ queryKey: ["weight"] });
       }
 
-      toast({ description: "저장했어요!" });
+      const intentPath: Record<string, string> = {
+        schedule: "/schedule",
+        vetVisit: "/health",
+        vaccine: "/health",
+        weight: "/health",
+      };
+      const path = intentPath[intent] || "/";
+      toast({
+        description: "저장했어요!",
+        action: (
+          <ToastAction altText="확인" onClick={() => navigate(path)}>
+            확인하기
+          </ToastAction>
+        ),
+      });
       close();
     } catch (err: any) {
       toast({ description: err.message || "저장 실패", variant: "destructive" });
@@ -313,22 +330,21 @@ export function VoiceCommandFab() {
           {/* 안내 (입력창 열린 상태에서만) */}
           {sheetState === "open" && (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">말하거나 텍스트로 입력하세요</p>
+              <p className="text-xs text-muted-foreground">어떤 탭에 있든 말하거나 텍스트로 입력하면 바로 저장돼요</p>
               <div className="grid grid-cols-2 gap-1.5 text-xs">
                 {[
-                  { label: "스케줄", example: "초코 내일 오전 10시 약 알림" },
-                  { label: "진료 기록", example: "오늘 강남동물병원 피부염 진단" },
-                  { label: "예방접종", example: "초코 오늘 광견병 맞았어" },
-                  { label: "체중", example: "초코 체중 4.5킬로" },
-                ].map(({ label, example }) => (
-                  <button
+                  { label: "스케줄 알림", desc: "식사·약·산책·예방접종 알림 추가" },
+                  { label: "진료 기록", desc: "병원 방문·진단 내용 기록" },
+                  { label: "예방접종", desc: "백신 접종 기록 추가" },
+                  { label: "체중 기록", desc: "오늘 측정한 체중 저장" },
+                ].map(({ label, desc }) => (
+                  <div
                     key={label}
-                    onClick={() => { setText(example); inputRef.current?.focus(); }}
-                    className="text-left bg-secondary rounded-xl px-3 py-2 active:scale-95 transition-transform"
+                    className="bg-secondary rounded-xl px-3 py-2"
                   >
                     <p className="font-semibold text-foreground">{label}</p>
-                    <p className="text-muted-foreground/80 mt-0.5 leading-tight">{example}</p>
-                  </button>
+                    <p className="text-muted-foreground/70 mt-0.5 leading-tight">{desc}</p>
+                  </div>
                 ))}
               </div>
             </div>
