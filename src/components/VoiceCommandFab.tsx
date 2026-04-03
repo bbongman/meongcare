@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Mic, MicOff, Send, Loader2, MessageCircle } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, MessageCircle, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDogs } from "@/hooks/use-dogs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,6 +45,7 @@ export function VoiceCommandFab() {
   const [clarifyCount, setClarifyCount] = useState(0);
 
   const recognitionRef = useRef<any>(null);
+  const cancelledRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: dogs = [] } = useDogs();
   const queryClient = useQueryClient();
@@ -62,6 +63,7 @@ export function VoiceCommandFab() {
   }
 
   function close() {
+    cancelledRef.current = true;
     setOpen(false);
     setText("");
     setLiveTranscript("");
@@ -80,6 +82,7 @@ export function VoiceCommandFab() {
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
+    cancelledRef.current = false;
     let final = "";
     recognition.onresult = (e: any) => {
       let interim = "";
@@ -90,8 +93,8 @@ export function VoiceCommandFab() {
       setLiveTranscript(final + interim);
     };
     recognition.onend = () => {
+      if (cancelledRef.current) return;
       if (final.trim()) {
-        setText(final.trim());
         sendToServer(final.trim());
       } else {
         setSheetState("open");
@@ -100,6 +103,7 @@ export function VoiceCommandFab() {
       }
     };
     recognition.onerror = () => {
+      if (cancelledRef.current) return;
       setSheetState("open");
       setLiveTranscript("");
       toast({ description: "음성 인식 실패. 텍스트로 입력해 주세요.", variant: "destructive" });
@@ -113,6 +117,15 @@ export function VoiceCommandFab() {
 
   function stopListening() {
     recognitionRef.current?.stop();
+  }
+
+  function cancelListening() {
+    cancelledRef.current = true;
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
+    setSheetState("open");
+    setLiveTranscript("");
+    setTimeout(() => inputRef.current?.focus(), 100);
   }
 
   function handleSendClick() {
@@ -275,7 +288,7 @@ export function VoiceCommandFab() {
     return (
       <button
         onClick={openSheet}
-        className="absolute bottom-[4.5rem] right-4 z-40 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center active:scale-90 transition-transform"
+        className="fixed bottom-[4.5rem] right-4 z-[55] w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center active:scale-90 transition-transform"
         aria-label="AI 입력"
       >
         <MessageCircle className="w-5 h-5" />
@@ -287,9 +300,9 @@ export function VoiceCommandFab() {
 
   return (
     <>
-      <div className="absolute inset-0 z-[55] bg-black/20" onClick={close} />
+      <div className="fixed inset-0 z-[55] bg-black/20" onClick={close} />
       <div
-        className="absolute bottom-0 left-0 right-0 z-[60] bg-card rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom-4"
+        className="fixed bottom-0 left-0 right-0 z-[60] bg-card rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom-4"
         style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <div className="flex justify-center pt-3 pb-2">
@@ -391,9 +404,16 @@ export function VoiceCommandFab() {
               <button
                 onClick={stopListening}
                 className="w-11 h-11 rounded-full bg-red-100 text-red-500 flex items-center justify-center active:scale-90 transition-transform"
-                aria-label="녹음 중지"
+                aria-label="녹음 완료"
               >
                 <MicOff className="w-5 h-5" />
+              </button>
+              <button
+                onClick={cancelListening}
+                className="w-11 h-11 rounded-full bg-secondary text-muted-foreground flex items-center justify-center active:scale-90 transition-transform"
+                aria-label="취소"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
           )}
