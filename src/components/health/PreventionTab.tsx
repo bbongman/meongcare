@@ -1,14 +1,32 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useDogs } from "@/hooks/use-dogs";
-import { usePreventionMeds, MED_LABELS, type MedType } from "@/hooks/use-prevention-meds";
+import { usePreventionMeds, MED_LABELS, type MedType, type MedRecord } from "@/hooks/use-prevention-meds";
 import { DogSelector } from "@/components/health/DogSelector";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { ko } from "date-fns/locale";
 
 const MED_TYPES: MedType[] = ["heartworm", "flea", "tick", "combo"];
+
+const MED_INTERVAL: Record<MedType, { label: string; months: number }> = {
+  heartworm: { label: "매월 1회", months: 1 },
+  flea:      { label: "1~3개월 1회", months: 3 },
+  tick:      { label: "1~3개월 1회", months: 3 },
+  combo:     { label: "매월 1회", months: 1 },
+};
+
+function getLastDoneDate(all: MedRecord[], type: MedType): Date | null {
+  const done = all
+    .filter((r) => r.type === type && r.done && r.doneAt)
+    .sort((a, b) => new Date(b.doneAt!).getTime() - new Date(a.doneAt!).getTime());
+  return done[0] ? new Date(done[0].doneAt!) : null;
+}
+
+function elapsedMonths(from: Date): number {
+  const now = new Date();
+  return (now.getFullYear() - from.getFullYear()) * 12 + (now.getMonth() - from.getMonth());
+}
 
 function MonthLabel({ yearMonth }: { yearMonth: string }) {
   const [year, month] = yearMonth.split("-");
@@ -25,7 +43,7 @@ export function PreventionTab() {
   const { data: dogs } = useDogs();
   const [selectedDogId, setSelectedDogId] = useState<string | null>(null);
   const activeDogId = selectedDogId ?? dogs?.[0]?.id ?? "";
-  const { getRecord, toggle, months } = usePreventionMeds(activeDogId);
+  const { all, getRecord, toggle, months } = usePreventionMeds(activeDogId);
   const [activeTypes, setActiveTypes] = useState<MedType[]>(["heartworm", "flea"]);
 
   if (!dogs || dogs.length === 0) {
@@ -66,6 +84,54 @@ export function PreventionTab() {
             );
           })}
         </div>
+      </div>
+
+      {/* 타입별 주기 + 타임라인 */}
+      <div className="space-y-2">
+        {activeTypes.map((type) => {
+          const cfg = MED_LABELS[type];
+          const interval = MED_INTERVAL[type];
+          const lastDate = getLastDoneDate(all, type);
+          const elapsed = lastDate ? elapsedMonths(lastDate) : null;
+          const overdue = elapsed !== null && elapsed > interval.months;
+          const steps = interval.months + 1;
+
+          return (
+            <div key={type} className="rounded-xl border border-border/50 bg-card px-3 py-2.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold text-foreground">{cfg.emoji} {cfg.label}</span>
+                <span className="text-[11px] text-muted-foreground">권장 {interval.label}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1 flex-1">
+                  {Array.from({ length: steps }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex-1 h-1.5 rounded-full",
+                        elapsed === null
+                          ? "bg-secondary"
+                          : i < Math.min(elapsed, steps)
+                            ? overdue ? "bg-red-400" : "bg-primary"
+                            : "bg-secondary"
+                      )}
+                    />
+                  ))}
+                </div>
+                <span className={cn("text-[11px] font-semibold shrink-0",
+                  elapsed === null ? "text-muted-foreground"
+                  : overdue ? "text-red-500"
+                  : elapsed === 0 ? "text-primary"
+                  : "text-foreground"
+                )}>
+                  {elapsed === null ? "기록 없음"
+                    : elapsed === 0 ? "이번 달 완료"
+                    : `${elapsed}개월 전`}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* 월별 체크 테이블 */}

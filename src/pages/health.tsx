@@ -33,7 +33,10 @@ function mergeOrder(saved: string[]): Tab[] {
 }
 
 export default function Health() {
-  const [activeTab, setActiveTab] = useState<Tab>("consultation");
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const param = new URLSearchParams(window.location.search).get("tab") as Tab;
+    return ALL_TABS.find((t) => t.id === param) ? param : "consultation";
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { tabOrder: savedOrder, saveSettings } = useUserSettings();
 

@@ -74,5 +74,5 @@ export function usePreventionMeds(dogId: string) {
     return result;
   }, []);
 
-  return { getRecord, toggle, months };
+  return { all, getRecord, toggle, months };
 }

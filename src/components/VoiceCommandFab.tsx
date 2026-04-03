@@ -246,9 +246,9 @@ export function VoiceCommandFab() {
 
       const intentPath: Record<string, string> = {
         schedule: "/schedule",
-        vetVisit: "/health",
-        vaccine: "/health",
-        weight: "/health",
+        vetVisit: "/health?tab=vet-visit",
+        vaccine: "/health?tab=vaccine",
+        weight: "/health?tab=stats",
       };
       const path = intentPath[intent] || "/";
       toast({
