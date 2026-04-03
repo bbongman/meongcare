@@ -250,7 +250,7 @@ app.post("/api/auth/register", authRateLimit, async (req, res) => {
   const hash = await bcrypt.hash(password, 10);
   await db.insert(users).values({ id, name: name.trim(), hash, role: "user" });
 
-  const token = jwt.sign({ id, name: name.trim(), role: "user" }, JWT_SECRET, { expiresIn: "7d" });
+  const token = jwt.sign({ id, name: name.trim(), role: "user" }, JWT_SECRET, { expiresIn: "90d" });
   res.json({ token, user: { id, name: name.trim() } });
 });
 
@@ -265,7 +265,7 @@ app.post("/api/auth/login", authRateLimit, async (req, res) => {
   const valid = await bcrypt.compare(password, user.hash);
   if (!valid) return res.status(401).json({ error: "비밀번호가 틀렸어요." });
 
-  const token = jwt.sign({ id: user.id, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+  const token = jwt.sign({ id: user.id, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "90d" });
   res.json({ token, user: { id: user.id, name: user.name } });
 });
 

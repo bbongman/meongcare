@@ -64,6 +64,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     queryClient.clear();
     setUser(data.user);
+    // 로그인 후 push 구독 서버 재등록 (토큰 만료로 끊긴 경우 복구)
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then(async (reg) => {
+        const sub = await reg.pushManager.getSubscription();
+        const clientId = localStorage.getItem("meongcare_push_client_id");
+        if (sub && clientId) {
+          fetch("/api/push-subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.token}` },
+            body: JSON.stringify({ subscription: sub.toJSON(), clientId }),
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
     return data.user as AuthUser;
   }, []);
 
