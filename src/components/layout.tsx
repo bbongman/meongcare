@@ -3,6 +3,7 @@ import { Home, MapPin, HeartPulse, Sparkles, CalendarClock, LogOut } from "lucid
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { VoiceCommandFab } from "./VoiceCommandFab";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -35,6 +36,9 @@ export function Layout({ children }: LayoutProps) {
       <main className="flex-1 overflow-y-auto pb-28 hide-scrollbar" style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom))" }}>
         {children}
       </main>
+
+      {/* AI 자연어 입력 FAB */}
+      {user && <VoiceCommandFab />}
 
       {/* Bottom Navigation */}
       <nav className="absolute bottom-0 left-0 right-0 bg-card border-t border-border/50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)] z-50 rounded-t-2xl px-2 pt-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>

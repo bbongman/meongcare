@@ -1053,6 +1053,65 @@ app.post("/api/feedback", authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── 음성/자연어 명령 파싱 ─────────────────────────────────────────────────────
+app.post("/api/voice-command", authMiddleware, async (req, res) => {
+  const { transcript, dogs: dogList = [], today, history = [] } = req.body;
+  if (!transcript?.trim()) return res.status(400).json({ error: "입력 내용이 없어요." });
+  try {
+    const dogsInfo = dogList.length > 0
+      ? dogList.map((d) => `- ${d.name} (id: ${d.id}, 견종: ${d.breed || "?"}, ${d.age || 0}살)`).join("\n")
+      : "등록된 강아지 없음";
+
+    const systemPrompt = `오늘 날짜: ${today}.
+등록된 강아지 목록:
+${dogsInfo}
+
+사용자의 자연어 입력에서 인텐트와 데이터를 추출해 반드시 JSON 형식으로만 응답하세요.
+다른 텍스트 없이 JSON만 출력하세요.
+
+지원하는 intent:
+- "schedule": 스케줄/알림 추가
+- "vetVisit": 진료 기록 추가
+- "vaccine": 예방접종 기록 추가
+- "weight": 체중 기록
+- "clarify": 중요한 정보가 부족해 되물어야 할 때
+- "unknown": 위 중 어느 것도 아닐 때
+
+규칙:
+- 날짜는 YYYY-MM-DD 형식 (오늘=${today}, 상대 날짜를 절대값으로 변환)
+- 시간은 HH:MM 형식
+- 강아지 이름이 언급되면 dogs 목록에서 id 매칭
+- 강아지가 1마리뿐이면 이름 미언급 시 그 강아지로 자동 매칭
+- 강아지가 여러 마리인데 이름 미언급이면 clarify
+- 미언급 필드는 null
+- repeat: "daily"|"weekly"|"monthly"|"none" (미언급 시 "none")
+- schedule type: "meal"|"medicine"|"walk"|"vaccine"
+
+응답 형식:
+schedule: {"intent":"schedule","data":{"type":"meal|medicine|walk|vaccine","title":"제목","time":"HH:MM or null","repeat":"none","dogId":"id or null","dogName":"이름 or null","vaccineDate":"YYYY-MM-DD or null","medicineName":"약이름 or null"}}
+vetVisit: {"intent":"vetVisit","data":{"dogName":"이름 or null","hospitalName":"병원명 or null","visitDate":"YYYY-MM-DD","diagnosis":"진단 or null","nextVisitDate":"YYYY-MM-DD or null","notes":"메모 or null","items":[],"totalPrice":0,"prescriptions":[]}}
+vaccine: {"intent":"vaccine","data":{"dogId":"id or null","dogName":"이름 or null","vaccineName":"백신명","date":"YYYY-MM-DD","hospitalName":"병원명 or null","nextDate":"YYYY-MM-DD or null","notes":""}}
+weight: {"intent":"weight","data":{"dogId":"id or null","dogName":"이름 or null","weight":숫자,"date":"YYYY-MM-DD"}}
+clarify: {"intent":"clarify","question":"구체적인 질문"}
+unknown: {"intent":"unknown"}`;
+
+    const messages = [...history, { role: "user", content: transcript }];
+    const result = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 600,
+      system: systemPrompt,
+      messages,
+    });
+    const text = result.content[0].text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("파싱 실패");
+    res.json(JSON.parse(jsonMatch[0]));
+  } catch (err) {
+    console.error("[voice-command]", err.message);
+    res.status(500).json({ error: "서버 오류가 발생했어요." });
+  }
+});
+
 // ── 데이터 내보내기 CSV ──────────────────────────────────────────────────────
 function csvSafe(str) {
   const s = String(str ?? "");
