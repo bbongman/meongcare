@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, MapPin, HeartPulse, Sparkles, CalendarClock, LogOut } from "lucide-react";
+import { Home, MapPin, Route, PawPrint, LogOut } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -14,11 +14,10 @@ export function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuth();
 
   const navItems = [
-    { path: "/", label: "홈", icon: Home },
-    { path: "/health", label: "건강", icon: HeartPulse },
-    { path: "/schedule", label: "스케줄", icon: CalendarClock },
-    { path: "/ai", label: "AI 도구", icon: Sparkles },
-    { path: "/map", label: "지도", icon: MapPin },
+    { path: "/", label: "동네", icon: Home },
+    { path: "/walk", label: "산책", icon: MapPin },
+    { path: "/courses", label: "코스", icon: Route },
+    { path: "/mydog", label: "내 강아지", icon: PawPrint },
   ];
 
   return (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Layout } from "@/components/layout";
 import { ConsultationTab } from "@/components/health/ConsultationTab";
 import { HistoryTab } from "@/components/health/HistoryTab";
@@ -8,7 +8,6 @@ import { VetVisitTab } from "@/components/health/VetVisitTab";
 import { VaccineTab } from "@/components/health/VaccineTab";
 import { PreventionTab } from "@/components/health/PreventionTab";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
 import { GripVertical, X, ChevronUp, ChevronDown, LayoutList } from "lucide-react";
 import { useUserSettings } from "@/hooks/use-user-settings";
 

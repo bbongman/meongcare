@@ -23,6 +23,7 @@ import {
 } from "@/hooks/use-schedules";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { useDogs } from "@/hooks/use-dogs";
+import { getAuthToken } from "@/hooks/use-auth";
 
 const TYPES: { type: ScheduleType; label: string; emoji: string }[] = [
   { type: "meal", label: "밥 시간", emoji: "🍖" },
@@ -30,6 +31,13 @@ const TYPES: { type: ScheduleType; label: string; emoji: string }[] = [
   { type: "walk", label: "산책", emoji: "🦮" },
   { type: "vaccine", label: "예방접종", emoji: "💉" },
 ];
+
+function formatTime12(time24: string): string {
+  const [h, m] = time24.split(":").map(Number);
+  const period = h < 12 ? "오전" : "오후";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${period} ${h12}:${String(m).padStart(2, "0")}`;
+}
 
 function getDiffDays(vaccineDate: string): number {
   const target = new Date(vaccineDate);
@@ -102,7 +110,11 @@ export default function Schedule() {
         if (!ok) { setTestMsg("알림 허용이 필요해요."); setTimeout(() => setTestMsg(null), 4000); return; }
         syncSchedulesToServer();
       }
-      const res = await fetch("/api/push-test", { method: "POST" });
+      const token = getAuthToken();
+      const res = await fetch("/api/push-test", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data = await res.json();
       if (!res.ok) setTestMsg(data.error);
       else setTestMsg("테스트 알림을 보냈어요! 잠시 후 도착해요.");
@@ -438,7 +450,7 @@ export default function Schedule() {
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         <span className="flex items-center gap-1 text-xs text-muted-foreground font-medium">
                           <Clock className="w-3 h-3" />
-                          {s.type !== "vaccine" ? s.time : (s.vaccineDate || "")}
+                          {s.type !== "vaccine" ? formatTime12(s.time) : (s.vaccineDate || "")}
                         </span>
                         {s.type !== "vaccine" && (
                           <span className="flex items-center gap-1 text-xs text-muted-foreground font-medium">

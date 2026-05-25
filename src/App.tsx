@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,30 +8,36 @@ import { X } from "lucide-react";
 import { useAuth, AuthProvider } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/query-client";
 
-// Pages
+// Pages (lazy-loaded)
 import Login from "./pages/login";
-import Home from "./pages/home";
-import Map from "./pages/map";
-import Health from "./pages/health";
-import AiTools from "./pages/ai-tools";
-import Schedule from "./pages/schedule";
-import Diary from "./pages/diary";
-import Admin from "./pages/admin";
-import NotFound from "./pages/not-found";
+const Community = lazy(() => import("./pages/community"));
+const Walk = lazy(() => import("./pages/walk"));
+const Courses = lazy(() => import("./pages/courses"));
+const MyDog = lazy(() => import("./pages/mydog"));
+const Admin = lazy(() => import("./pages/admin"));
+const NotFound = lazy(() => import("./pages/not-found"));
 
+
+function PageFallback() {
+  return (
+    <div className="min-h-dvh flex items-center justify-center">
+      <img src="/icons/icon-96x96.png" alt="" className="w-14 h-14 rounded-2xl animate-pulse" />
+    </div>
+  );
+}
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/map" component={Map} />
-      <Route path="/health" component={Health} />
-      <Route path="/ai" component={AiTools} />
-      <Route path="/schedule" component={Schedule} />
-      <Route path="/diary" component={Diary} />
-      <Route path="/admin" component={Admin} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<PageFallback />}>
+      <Switch>
+        <Route path="/" component={Community} />
+        <Route path="/walk" component={Walk} />
+        <Route path="/courses" component={Courses} />
+        <Route path="/mydog" component={MyDog} />
+        <Route path="/admin" component={Admin} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -111,7 +117,7 @@ function InstallBanner() {
     <div className="fixed bottom-20 left-4 right-4 z-50 bg-white border border-border shadow-2xl rounded-2xl p-4 flex items-start gap-3 animate-in slide-in-from-bottom-4">
       <img src="/icons/icon-96x96.png" alt="" className="w-12 h-12 rounded-xl shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-foreground">멍케어를 홈 화면에 추가하세요</p>
+        <p className="text-sm font-bold text-foreground">노크를 홈 화면에 추가하세요</p>
         {isIos ? (
           <p className="text-xs text-muted-foreground mt-1">
             Safari 하단의 <span className="inline-block align-middle text-base leading-none">⬆</span> 공유 버튼 → <strong>"홈 화면에 추가"</strong>를 눌러주세요

@@ -52,49 +52,49 @@
 }
 
 :root {
-  /* Warm Orange Theme: #FF6B35 is approx HSL(16, 100%, 60%) */
-  
-  --background: 30 33% 98%; /* Very warm white/cream */
-  --foreground: 20 20% 15%; /* Soft dark brown/gray for text */
-  
+  /* Toss-style Clean Blue Theme */
+
+  --background: 210 20% 98%; /* 거의 흰색, 살짝 쿨톤 */
+  --foreground: 220 20% 12%; /* 진한 네이비 계열 텍스트 */
+
   --card: 0 0% 100%;
-  --card-foreground: 20 20% 15%;
-  --card-border: 24 10% 90%;
+  --card-foreground: 220 20% 12%;
+  --card-border: 220 13% 91%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 20 20% 15%;
-  --popover-border: 24 10% 90%;
+  --popover-foreground: 220 20% 12%;
+  --popover-border: 220 13% 91%;
 
-  --primary: 16 100% 60%; /* #FF6B35 */
+  --primary: 217 91% 60%; /* #3B82F6 Toss Blue */
   --primary-foreground: 0 0% 100%;
-  --primary-border: 16 100% 50%;
+  --primary-border: 217 91% 50%;
 
-  --secondary: 30 30% 94%;
-  --secondary-foreground: 20 20% 25%;
-  --secondary-border: 30 20% 88%;
+  --secondary: 220 14% 95%;
+  --secondary-foreground: 220 20% 25%;
+  --secondary-border: 220 13% 88%;
 
-  --muted: 30 20% 94%;
-  --muted-foreground: 20 10% 50%;
-  --muted-border: 30 20% 88%;
+  --muted: 220 14% 95%;
+  --muted-foreground: 220 9% 46%;
+  --muted-border: 220 13% 88%;
 
-  --accent: 38 100% 65%; /* A warm yellow-orange complement */
-  --accent-foreground: 20 20% 15%;
-  --accent-border: 38 100% 55%;
+  --accent: 217 91% 60%;
+  --accent-foreground: 0 0% 100%;
+  --accent-border: 217 91% 50%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   --destructive-border: 0 84% 50%;
 
-  --border: 24 10% 90%;
-  --input: 24 10% 90%;
-  --ring: 16 100% 60%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 217 91% 60%;
 
   --radius: 1rem;
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow: 0 4px 6px -1px rgb(255 107 53 / 0.05), 0 2px 4px -2px rgb(255 107 53 / 0.05);
-  --shadow-md: 0 10px 15px -3px rgb(255 107 53 / 0.08), 0 4px 6px -4px rgb(255 107 53 / 0.05);
-  --shadow-lg: 0 20px 25px -5px rgb(255 107 53 / 0.1), 0 8px 10px -6px rgb(255 107 53 / 0.05);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.04), 0 2px 4px -2px rgb(0 0 0 / 0.03);
+  --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.06), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.04);
 }
 
 @layer base {

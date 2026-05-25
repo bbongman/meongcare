@@ -85,10 +85,16 @@ export default function Admin() {
   async function handleDelete(id: string, name: string) {
     if (!confirm(`${name} 계정을 삭제할까요?`)) return;
     const token = localStorage.getItem("meongcare_token");
-    await fetch(`/api/admin/users/${id}`, {
+    const res = await fetch(`/api/admin/users/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: "삭제 실패" }));
+      setMessage(data.error || "삭제 실패");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
     queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
   }

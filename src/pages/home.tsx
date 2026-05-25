@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Bone, Activity, HeartPulse, CalendarClock, MoreHorizontal, Bell, X, Stethoscope, ChevronRight, Pencil, Share2, Timer, Square, Star, Phone, Check } from "lucide-react";
-import { AreaChart, Area, XAxis, ResponsiveContainer, Tooltip } from "recharts";
+import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { InstallGuideDialog } from "@/components/install-guide-dialog";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -31,6 +31,30 @@ import { getBreedDiseases } from "@/lib/breed-diseases";
 import { getDisplayAge, getBirthdayDiff, toHumanAge, getHealthTip } from "@/lib/dog-utils";
 import { motion, AnimatePresence } from "framer-motion";
 
+function parseWalkMinutes(memo: string | undefined | null): number {
+  if (!memo) return 0;
+  let total = 0;
+  for (const m of memo.matchAll(/산책\s*(\d+)분/g)) total += parseInt(m[1], 10);
+  return total;
+}
+
+function calcWalkStreak(logs: { date: string; walk: boolean }[]): number {
+  const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+  const today = new Date().toISOString().slice(0, 10);
+  let streak = 0;
+  const checkDate = new Date();
+  const todayLog = sorted.find(l => l.date === today);
+  if (todayLog && !todayLog.walk) return 0;
+  if (!todayLog) checkDate.setDate(checkDate.getDate() - 1);
+  for (let i = 0; i < 365; i++) {
+    const dateStr = checkDate.toISOString().slice(0, 10);
+    const log = sorted.find(l => l.date === dateStr);
+    if (log?.walk) { streak++; checkDate.setDate(checkDate.getDate() - 1); }
+    else break;
+  }
+  return streak;
+}
+
 function TodayConditionBadge({ dogId }: { dogId: string }) {
   const { todayLog } = useDailyLog(dogId);
   if (!todayLog) return null;
@@ -47,6 +71,64 @@ function TodayConditionBadge({ dogId }: { dogId: string }) {
   );
 }
 
+function WalkPraiseDialog({ open, onOpenChange, walkMinutes, dogId }: { open: boolean; onOpenChange: (o: boolean) => void; walkMinutes: number; dogId: string }) {
+  const { todayLog, recentLogs, allLogs } = useDailyLog(dogId);
+  const todayTotal = parseWalkMinutes(todayLog?.memo);
+  const weekLogs = recentLogs(7);
+  const walkDays = weekLogs.filter(l => l.walk).length;
+  const streak = calcWalkStreak(allLogs);
+
+  const praise = walkMinutes >= 60
+    ? { emoji: "🎉", msg: "최고의 산책! 오늘 정말 열심히 했어요" }
+    : walkMinutes >= 30
+    ? { emoji: "🏆", msg: "완벽한 산책! 정말 대단해요" }
+    : walkMinutes >= 15
+    ? { emoji: "🌟", msg: "훌륭해요! 건강한 산책 시간이에요" }
+    : walkMinutes >= 5
+    ? { emoji: "🦮", msg: "가벼운 산책 완료! 좋은 습관이에요" }
+    : { emoji: "🐾", msg: "짧지만 좋아요! 움직이는 것 자체가 대단해요" };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="rounded-[2rem] max-w-xs mx-4 p-0 overflow-hidden">
+        <div className="bg-gradient-to-b from-green-50 to-emerald-50 p-6 text-center">
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", damping: 12, delay: 0.1 }}>
+            <span className="text-6xl block mb-3">{praise.emoji}</span>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+            <p className="text-lg font-bold text-foreground mb-1">{praise.msg}</p>
+            <p className="text-2xl font-bold text-green-600">{walkMinutes}분 산책 완료</p>
+          </motion.div>
+        </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="px-6 pb-6">
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="bg-green-50 rounded-2xl p-3 text-center">
+              <p className="text-lg font-bold text-green-600">{todayTotal}분</p>
+              <p className="text-[10px] text-muted-foreground">오늘 총</p>
+            </div>
+            <div className="bg-green-50 rounded-2xl p-3 text-center">
+              <p className="text-lg font-bold text-green-600">{walkDays}/7</p>
+              <p className="text-[10px] text-muted-foreground">이번 주</p>
+            </div>
+            <div className="bg-green-50 rounded-2xl p-3 text-center">
+              <p className="text-lg font-bold text-green-600">{streak}일</p>
+              <p className="text-[10px] text-muted-foreground">연속</p>
+            </div>
+          </div>
+          {streak >= 3 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5 text-center mb-4">
+              <p className="text-xs font-bold text-amber-700">🔥 {streak}일 연속 산책 중! 대단해요!</p>
+            </div>
+          )}
+          <button onClick={() => onOpenChange(false)} className="w-full py-3 rounded-2xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-colors">
+            확인
+          </button>
+        </motion.div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function WalkTimerWidget({ dogId }: { dogId: string }) {
   const { todayLog, saveLog } = useDailyLog(dogId);
   const storageKey = `walk_timer_${dogId}`;
@@ -55,6 +137,8 @@ function WalkTimerWidget({ dogId }: { dogId: string }) {
     return v ? parseInt(v) : null;
   });
   const [elapsed, setElapsed] = useState(0);
+  const [praiseOpen, setPraiseOpen] = useState(false);
+  const [lastWalkMins, setLastWalkMins] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
@@ -71,13 +155,13 @@ function WalkTimerWidget({ dogId }: { dogId: string }) {
     setStartTime(now);
   }
 
-  function handleStop() {
+  async function handleStop() {
     const mins = Math.round(elapsed / 60);
     localStorage.removeItem(storageKey);
     setStartTime(null);
     const prevMemo = todayLog?.memo ?? "";
     const walkMemo = `산책 ${mins}분`;
-    saveLog({
+    await saveLog({
       meal: todayLog?.meal ?? 2,
       walk: true,
       poop: todayLog?.poop ?? false,
@@ -85,36 +169,39 @@ function WalkTimerWidget({ dogId }: { dogId: string }) {
       energy: todayLog?.energy ?? 1,
       memo: prevMemo ? `${prevMemo}\n${walkMemo}` : walkMemo,
     });
+    setLastWalkMins(mins);
+    setPraiseOpen(true);
   }
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
 
-  if (startTime) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-3xl p-5"
-      >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🦮</span>
-            <p className="text-xs font-bold text-green-700">산책 중</p>
-          </div>
-          <p className="text-2xl font-bold text-green-600 tabular-nums">{mm}:{ss}</p>
-        </div>
-        <button
-          onClick={handleStop}
-          className="w-full py-3 rounded-2xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 transition-colors"
+  return (
+    <>
+      {startTime && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-3xl p-5"
         >
-          <Square className="w-4 h-4" />산책 종료 및 기록
-        </button>
-      </motion.div>
-    );
-  }
-
-  return null;
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🦮</span>
+              <p className="text-xs font-bold text-green-700">산책 중</p>
+            </div>
+            <p className="text-2xl font-bold text-green-600 tabular-nums">{mm}:{ss}</p>
+          </div>
+          <button
+            onClick={handleStop}
+            className="w-full py-3 rounded-2xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 transition-colors"
+          >
+            <Square className="w-4 h-4" />산책 종료 및 기록
+          </button>
+        </motion.div>
+      )}
+      <WalkPraiseDialog open={praiseOpen} onOpenChange={setPraiseOpen} walkMinutes={lastWalkMins} dogId={dogId} />
+    </>
+  );
 }
 
 function TodayCheckButton({ dogId, onClick, hasLog }: { dogId: string; onClick: () => void; hasLog: boolean }) {
@@ -278,6 +365,83 @@ function WeeklyHealthWidget({ dogId, dogName }: { dogId: string; dogName: string
         <div className="bg-white/70 rounded-2xl p-3 text-center">
           <p className={cn("text-xl font-bold", energyColor)}>{ENERGY_LABEL[energyIdx]}</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">평균 기력</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyWalkSummaryWidget({ dogId, dogName }: { dogId: string; dogName: string }) {
+  const { recentLogs, allLogs } = useDailyLog(dogId);
+  const logs = recentLogs(7);
+  const walkDays = logs.filter(l => l.walk).length;
+  if (walkDays < 1) return null;
+
+  const streak = calcWalkStreak(allLogs);
+  const goalDays = 5;
+  const goalPct = Math.min(Math.round((walkDays / goalDays) * 100), 100);
+
+  const chartData = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const key = d.toISOString().slice(0, 10);
+    const log = logs.find(l => l.date === key);
+    const mins = log ? parseWalkMinutes(log.memo) : 0;
+    return {
+      label: `${d.getMonth() + 1}/${d.getDate()}`,
+      mins,
+      walked: log?.walk ?? false,
+    };
+  });
+
+  const totalMins = chartData.reduce((s, d) => s + d.mins, 0);
+
+  return (
+    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-3xl p-4">
+      <p className="text-xs font-bold text-green-700 mb-3">{dogName} · 주간 산책 리포트 🦮</p>
+
+      <div className="bg-white/60 rounded-2xl p-3 mb-3">
+        <ResponsiveContainer width="100%" height={80}>
+          <BarChart data={chartData} barSize={16}>
+            <XAxis dataKey="label" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
+            <YAxis hide />
+            <Tooltip formatter={(v: number) => [`${v}분`, "산책"]} labelFormatter={() => ""} contentStyle={{ fontSize: 11, borderRadius: 12 }} />
+            <Bar dataKey="mins" radius={[6, 6, 0, 0]}>
+              {chartData.map((entry, i) => (
+                <Cell key={i} fill={entry.walked ? (entry.mins > 0 ? "#34d399" : "#86efac") : "#e5e7eb"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="bg-white/70 rounded-2xl p-2.5 text-center">
+          <p className="text-base font-bold text-green-600">{totalMins}분</p>
+          <p className="text-[10px] text-muted-foreground">총 산책</p>
+        </div>
+        <div className="bg-white/70 rounded-2xl p-2.5 text-center">
+          <p className="text-base font-bold text-green-600">{walkDays}/7일</p>
+          <p className="text-[10px] text-muted-foreground">산책 일수</p>
+        </div>
+        <div className="bg-white/70 rounded-2xl p-2.5 text-center">
+          <p className="text-base font-bold text-green-600">{streak}일</p>
+          <p className="text-[10px] text-muted-foreground">연속</p>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-[10px] font-bold text-green-700">주 {goalDays}회 목표</p>
+          <p className="text-[10px] font-bold text-green-600">{goalPct}%</p>
+        </div>
+        <div className="w-full h-2 bg-white/70 rounded-full overflow-hidden">
+          <motion.div
+            className={cn("h-full rounded-full", goalPct >= 100 ? "bg-green-500" : "bg-green-400")}
+            initial={{ width: 0 }}
+            animate={{ width: `${goalPct}%` }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+          />
         </div>
       </div>
     </div>
@@ -977,6 +1141,9 @@ export default function Home() {
 
             {/* 주간 건강 요약 */}
             <WeeklyHealthWidget dogId={activeDog.id} dogName={activeDog.name} />
+
+            {/* 주간 산책 리포트 */}
+            <WeeklyWalkSummaryWidget dogId={activeDog.id} dogName={activeDog.name} />
 
             {/* 오늘 할 일 요약 */}
             <TodayScheduleWidget />

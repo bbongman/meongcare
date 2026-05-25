@@ -14,6 +14,14 @@ import { eq, and, desc } from "drizzle-orm";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "10mb" }));
+
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+for (const m of ["post", "patch", "put", "delete"]) {
+  const orig = app[m].bind(app);
+  app[m] = (path, ...handlers) => orig(path, ...handlers.map(h => h.constructor?.name === "AsyncFunction" ? wrap(h) : h));
+}
+const _get = app.get.bind(app);
+app.get = (path, ...handlers) => handlers.length === 0 ? _get(path) : _get(path, ...handlers.map(h => h.constructor?.name === "AsyncFunction" ? wrap(h) : h));
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
@@ -704,13 +712,10 @@ app.delete("/api/push-unsubscribe", authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/push-test", authMiddleware, adminOnly, async (req, res) => {
-  const { userId } = req.body;
-  const targets = [...subscriptions.entries()].filter(([, sub]) => {
-    if (userId && sub.userId) return sub.userId === userId;
-    return true;
-  });
-  if (targets.length === 0) return res.status(400).json({ error: "등록된 구독자가 없어요." });
+app.post("/api/push-test", authMiddleware, async (req, res) => {
+  const uid = req.user.id;
+  const targets = [...subscriptions.entries()].filter(([, sub]) => sub.userId === uid);
+  if (targets.length === 0) return res.status(400).json({ error: "등록된 구독자가 없어요. 알림을 먼저 허용해주세요." });
   const payload = JSON.stringify({ title: "멍케어 테스트 알림", body: "푸시 알림이 정상 작동하고 있어요!" });
   const results = await Promise.allSettled(
     targets.map(([clientId, sub]) => {
@@ -1208,6 +1213,12 @@ setInterval(() => {
   const h = new Date().getHours();
   if (h === 9) sendAutoPushNotifications();
 }, 1000 * 60 * 60);
+
+// ── 글로벌 에러 핸들러 ────────────────────────────────────────────────────────
+app.use((err, req, res, _next) => {
+  console.error(`[ERROR] ${req.method} ${req.path}:`, err.message);
+  if (!res.headersSent) res.status(500).json({ error: "서버 오류가 발생했어요. 잠시 후 다시 시도해주세요." });
+});
 
 // ── 정적 파일 서빙 ────────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, "dist/public");
