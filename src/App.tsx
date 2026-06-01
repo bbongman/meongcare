@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,8 +14,14 @@ const Community = lazy(() => import("./pages/community"));
 const Walk = lazy(() => import("./pages/walk"));
 const Courses = lazy(() => import("./pages/courses"));
 const MyDog = lazy(() => import("./pages/mydog"));
+const OAuthCallback = lazy(() => import("./pages/oauth-callback"));
 const Admin = lazy(() => import("./pages/admin"));
 const NotFound = lazy(() => import("./pages/not-found"));
+
+// 건강관리 (내 강아지 하위 서브페이지 — 번역기는 제외)
+const Health = lazy(() => import("./pages/health"));
+const Diary = lazy(() => import("./pages/diary"));
+const Schedule = lazy(() => import("./pages/schedule"));
 
 
 function PageFallback() {
@@ -26,20 +32,6 @@ function PageFallback() {
   );
 }
 
-function Router() {
-  return (
-    <Suspense fallback={<PageFallback />}>
-      <Switch>
-        <Route path="/" component={Community} />
-        <Route path="/walk" component={Walk} />
-        <Route path="/courses" component={Courses} />
-        <Route path="/mydog" component={MyDog} />
-        <Route path="/admin" component={Admin} />
-        <Route component={NotFound} />
-      </Switch>
-    </Suspense>
-  );
-}
 
 function KakaoRedirect() {
   const [showIosGuide, setShowIosGuide] = useState(false);
@@ -138,8 +130,56 @@ function InstallBanner() {
   );
 }
 
+const MAIN_TABS: Record<string, React.LazyExoticComponent<() => JSX.Element>> = {
+  "/": Community,
+  "/walk": Walk,
+  "/courses": Courses,
+  "/mydog": MyDog,
+};
+
+const HIDDEN_STYLE: React.CSSProperties = {
+  visibility: "hidden",
+  pointerEvents: "none",
+  position: "fixed",
+  inset: 0,
+  zIndex: -1,
+};
+
+function KeepAliveRoutes() {
+  const [location] = useLocation();
+
+  const isSpecial = location === "/oauth-callback" || location === "/admin" || !Object.keys(MAIN_TABS).includes(location);
+
+  return (
+    <>
+      {Object.entries(MAIN_TABS).map(([path, Page]) => (
+        <div key={path} style={location === path ? {} : HIDDEN_STYLE}>
+          <Suspense fallback={location === path ? <PageFallback /> : null}>
+            <Page />
+          </Suspense>
+        </div>
+      ))}
+      {isSpecial && (
+        <Suspense fallback={<PageFallback />}>
+          <Switch>
+            <Route path="/oauth-callback" component={OAuthCallback} />
+            <Route path="/admin" component={Admin} />
+            <Route path="/health" component={Health} />
+            <Route path="/diary" component={Diary} />
+            <Route path="/schedule" component={Schedule} />
+            <Route component={NotFound} />
+          </Switch>
+        </Suspense>
+      )}
+    </>
+  );
+}
+
 function AuthGate() {
   const { user, loading } = useAuth();
+
+  // OAuth 콜백은 로그인 전에도 접근 가능해야 함
+  const isOAuthCallback = window.location.pathname === "/oauth-callback";
 
   if (loading) {
     return (
@@ -149,12 +189,12 @@ function AuthGate() {
     );
   }
 
-  if (!user) return <Login />;
+  if (!user && !isOAuthCallback) return <Login />;
 
   return (
     <>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <Router />
+        <KeepAliveRoutes />
       </WouterRouter>
       <InstallBanner />
     </>

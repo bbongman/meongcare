@@ -25,6 +25,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (name: string, password: string) => Promise<AuthUser>;
   register: (name: string, password: string) => Promise<AuthUser>;
+  loginWithSocial: (provider: "kakao" | "naver", code: string, state: string, redirectUri: string) => Promise<AuthUser>;
   logout: () => void;
   updateProfile: (data: { gender?: string; phone?: string; memo?: string }) => Promise<AuthUser>;
 }
@@ -96,6 +97,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user as AuthUser;
   }, []);
 
+  const loginWithSocial = useCallback(async (provider: "kakao" | "naver", code: string, state: string, redirectUri: string) => {
+    const res = await fetch(`/api/auth/${provider}/callback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, state, redirectUri }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    localStorage.setItem(TOKEN_KEY, data.token);
+    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    queryClient.clear();
+    setUser(data.user);
+    return data.user as AuthUser;
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
@@ -118,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithSocial, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

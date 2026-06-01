@@ -4,7 +4,6 @@ import {
   HeartPulse,
   Syringe,
   BarChart2,
-  Stethoscope,
   BookOpen,
   CalendarClock,
   ChevronRight,
@@ -71,15 +70,6 @@ const MENU_SECTIONS = [
   {
     title: "일상",
     items: [
-      {
-        id: "consultation",
-        label: "AI 문진",
-        desc: "증상 입력으로 응급도 확인",
-        icon: Stethoscope,
-        href: "/health?tab=consultation",
-        color: "text-cyan-500",
-        bg: "bg-cyan-50",
-      },
       {
         id: "diary",
         label: "일기",

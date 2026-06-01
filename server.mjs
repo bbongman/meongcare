@@ -9,7 +9,7 @@ import path from "path";
 import crypto from "crypto";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or } from "drizzle-orm";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -37,11 +37,13 @@ import { pgTable, text, boolean, integer, real, jsonb, timestamp } from "drizzle
 const users = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  hash: text("hash").notNull(),
+  hash: text("hash").notNull().default(""),
   role: text("role").notNull().default("user"),
   gender: text("gender"),
   phone: text("phone"),
   memo: text("memo"),
+  kakaoId: text("kakao_id"),
+  naverId: text("naver_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -161,6 +163,163 @@ const aiLogs = pgTable("ai_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const events = pgTable("events", {
+  id: text("id").primaryKey(),
+  courseId: text("course_id"),
+  type: text("type").notNull().default("regular"),
+  title: text("title").notNull(),
+  description: text("description").default(""),
+  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+  createdBy: text("created_by"),
+  creatorName: text("creator_name").default("운영팀"),
+  lat: real("lat").notNull(),
+  lng: real("lng").notNull(),
+  maxParticipants: integer("max_participants"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+const eventParticipants = pgTable("event_participants", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id").notNull(),
+  userId: text("user_id").notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+});
+
+const posts = pgTable("posts", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  userName: text("user_name").notNull(),
+  content: text("content").notNull(),
+  lat: real("lat"),
+  lng: real("lng"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+const postLikes = pgTable("post_likes", {
+  postId: text("post_id").notNull(),
+  userId: text("user_id").notNull(),
+});
+
+// ── 산책 세션 테이블 초기화 ──────────────────────────────────────────────────
+(async () => {
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS walk_sessions (
+      id TEXT PRIMARY KEY,
+      event_id TEXT,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      lat REAL,
+      lng REAL,
+      distance_m INTEGER DEFAULT 0,
+      started_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      ended_at TIMESTAMPTZ
+    )`;
+    console.log("산책 세션 테이블 초기화 완료");
+  } catch (e) { console.error("산책 세션 초기화 오류:", e.message); }
+})();
+
+// 30분마다 좀비 세션 정리
+setInterval(async () => {
+  try {
+    await sql`UPDATE walk_sessions SET ended_at=NOW() WHERE ended_at IS NULL AND updated_at < NOW() - INTERVAL '30 minutes'`;
+  } catch {}
+}, 30 * 60 * 1000);
+
+// ── 게시글 테이블 초기화 + 시드 ──────────────────────────────────────────────
+(async () => {
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS posts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      lat REAL,
+      lng REAL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`;
+    await sql`CREATE TABLE IF NOT EXISTS post_likes (
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      PRIMARY KEY (post_id, user_id)
+    )`;
+
+    const existing = await sql`SELECT COUNT(*)::int AS cnt FROM posts`;
+    if (existing[0].cnt === 0) {
+      const SEEDS = [
+        { content: "오늘 전주천에서 골든리트리버 만났어요! 너무 순해서 같이 산책했네요 ㅎㅎ", lat: 35.8116, lng: 127.1626 },
+        { content: "덕진공원 연꽃 지금 엄청 예뻐요. 강아지랑 산책하기 딱 좋아요", lat: 35.8475, lng: 127.1210 },
+        { content: "우리 말티즈 처음으로 다른 강아지랑 친해졌어요! 산책 메이트 구해요~", lat: 35.8148, lng: 127.1526 },
+        { content: "삼천 하천길 추천합니다. 그늘도 많고 강아지 뛰어놀기 좋아요", lat: 35.7590, lng: 127.1221 },
+        { content: "내일 바람쐬는길 같이 걸으실 분? 오전 9시 자연생태관 앞", lat: 35.8116, lng: 127.1626 },
+      ];
+      const names = ["골든맘", "연꽃산책러", "말티즈집사", "삼천하천러", "바람쐬러가자"];
+      for (let i = 0; i < SEEDS.length; i++) {
+        const s = SEEDS[i];
+        await sql`INSERT INTO posts(id,user_id,user_name,content,lat,lng,created_at)
+          VALUES(${crypto.randomUUID()},'seed',${names[i]},${s.content},${s.lat},${s.lng},${new Date(Date.now() - i * 15 * 60000).toISOString()})`;
+      }
+    }
+    console.log("게시글 테이블 초기화 완료");
+  } catch (e) { console.error("게시글 초기화 오류:", e.message); }
+})();
+
+// ── 이벤트 테이블 초기화 + 정기 이벤트 시드 ────────────────────────────────
+(async () => {
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS events (
+      id TEXT PRIMARY KEY,
+      course_id TEXT,
+      type TEXT NOT NULL DEFAULT 'regular',
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      start_at TIMESTAMPTZ NOT NULL,
+      created_by TEXT,
+      creator_name TEXT DEFAULT '운영팀',
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      max_participants INTEGER,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`;
+    await sql`CREATE TABLE IF NOT EXISTS event_participants (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      joined_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(event_id, user_id)
+    )`;
+
+    // 다음 3주 토/일 정기 이벤트 시드
+    const REGULAR = [
+      { courseId: "c1", title: "전주천 아침 산책", hourKst: 7, weekday: 6, lat: 35.811593, lng: 127.162588, max: 10 },
+      { courseId: "c2", title: "덕진공원 연꽃길 산책", hourKst: 10, weekday: 6, lat: 35.847488, lng: 127.121025, max: 8 },
+      { courseId: "c3", title: "완산칠봉 함께 오르기", hourKst: 9, weekday: 0, lat: 35.804624, lng: 127.141921, max: 6 },
+      { courseId: "c4", title: "삼천 저녁 산책", hourKst: 18, weekday: 6, lat: 35.759004, lng: 127.122067, max: 12 },
+      { courseId: "c5", title: "한옥마을 포토 산책", hourKst: 14, weekday: 0, lat: 35.814777, lng: 127.152557, max: 8 },
+    ];
+
+    const now = new Date();
+    for (const r of REGULAR) {
+      for (let w = 0; w < 3; w++) {
+        const d = new Date(now);
+        const cur = d.getDay();
+        let diff = (r.weekday - cur + 7) % 7 || 7;
+        diff += w * 7;
+        d.setDate(d.getDate() + diff);
+        d.setUTCHours(r.hourKst - 9, 0, 0, 0);
+        const existing = await sql`SELECT id FROM events WHERE course_id=${r.courseId} AND start_at=${d.toISOString()} AND type='regular'`;
+        if (existing.length === 0) {
+          await sql`INSERT INTO events(id,course_id,type,title,start_at,creator_name,lat,lng,max_participants)
+            VALUES(${crypto.randomUUID()},${r.courseId},'regular',${r.title},${d.toISOString()},'운영팀',${r.lat},${r.lng},${r.max})`;
+        }
+      }
+    }
+    console.log("이벤트 테이블 초기화 완료");
+  } catch (e) {
+    console.error("이벤트 초기화 오류:", e.message);
+  }
+})();
+
 // ── JWT 시크릿 ──────────────────────────────────────────────────────────────
 if (!process.env.JWT_SECRET) {
   console.warn("[경고] JWT_SECRET 환경변수가 없습니다. DATABASE_URL 기반 시크릿을 사용합니다. 보안을 위해 Railway에서 JWT_SECRET을 설정하세요.");
@@ -277,6 +436,77 @@ app.post("/api/auth/login", authRateLimit, async (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name } });
 });
 
+// ── 카카오 소셜 로그인 ────────────────────────────────────────────────────────
+app.post("/api/auth/kakao/callback", authRateLimit, async (req, res) => {
+  const { code, redirectUri } = req.body;
+  if (!code) return res.status(400).json({ error: "code가 없어요." });
+
+  const tokenRes = await fetch("https://kauth.kakao.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: process.env.KAKAO_REST_API_KEY,
+      client_secret: process.env.KAKAO_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      code,
+    }),
+  });
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) {
+    console.error("[카카오] 토큰 교환 실패:", JSON.stringify(tokenData));
+    console.error("[카카오] 요청 redirect_uri:", redirectUri, "| client_id:", process.env.KAKAO_REST_API_KEY);
+    return res.status(401).json({ error: "카카오 인증 실패", detail: tokenData });
+  }
+
+  const userRes = await fetch("https://kapi.kakao.com/v2/user/me", {
+    headers: { Authorization: `Bearer ${tokenData.access_token}` },
+  });
+  const kakaoUser = await userRes.json();
+  const kakaoId = String(kakaoUser.id);
+  const nickname = kakaoUser.properties?.nickname || kakaoUser.kakao_account?.profile?.nickname || `사용자${kakaoId.slice(-4)}`;
+
+  const rows = await db.select().from(users).where(eq(users.kakaoId, kakaoId));
+  let user = rows[0];
+  if (!user) {
+    const id = crypto.randomUUID();
+    await db.insert(users).values({ id, name: nickname, hash: "", kakaoId, role: "user" });
+    user = { id, name: nickname, role: "user" };
+  }
+  const token = jwt.sign({ id: user.id, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "1y" });
+  res.json({ token, user: { id: user.id, name: user.name } });
+});
+
+// ── 네이버 소셜 로그인 ────────────────────────────────────────────────────────
+app.post("/api/auth/naver/callback", authRateLimit, async (req, res) => {
+  const { code, state, redirectUri } = req.body;
+  if (!code) return res.status(400).json({ error: "code가 없어요." });
+
+  const tokenRes = await fetch(
+    `https://nid.naver.com/oauth2.0/token?grant_type=authorization_code&client_id=${process.env.NAVER_CLIENT_ID}&client_secret=${process.env.NAVER_CLIENT_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}&state=${state}`,
+    { method: "GET" }
+  );
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) return res.status(401).json({ error: "네이버 인증 실패" });
+
+  const userRes = await fetch("https://openapi.naver.com/v1/nid/me", {
+    headers: { Authorization: `Bearer ${tokenData.access_token}` },
+  });
+  const naverData = await userRes.json();
+  const naverId = naverData.response?.id;
+  const nickname = naverData.response?.name || naverData.response?.nickname || `사용자${naverId?.slice(-4)}`;
+
+  const rows = await db.select().from(users).where(eq(users.naverId, naverId));
+  let user = rows[0];
+  if (!user) {
+    const id = crypto.randomUUID();
+    await db.insert(users).values({ id, name: nickname, hash: "", naverId, role: "user" });
+    user = { id, name: nickname, role: "user" };
+  }
+  const token = jwt.sign({ id: user.id, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "1y" });
+  res.json({ token, user: { id: user.id, name: user.name } });
+});
+
 app.get("/api/auth/me", authMiddleware, async (req, res) => {
   const rows = await db.select().from(users).where(eq(users.id, req.user.id));
   if (!rows[0]) return res.status(404).json({ error: "사용자를 찾을 수 없어요." });
@@ -294,6 +524,176 @@ app.patch("/api/auth/profile", authMiddleware, async (req, res) => {
   const rows = await db.select().from(users).where(eq(users.id, req.user.id));
   const { hash, ...safe } = rows[0];
   res.json({ user: safe });
+});
+
+// ── 게시글 API ───────────────────────────────────────────────────────────────
+
+// 게시글 목록 (최신순, 위치 필터 선택)
+app.get("/api/posts", async (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
+  let userId = null;
+  if (token) { try { userId = jwt.verify(token, JWT_SECRET).id; } catch {} }
+
+  const rows = await sql`
+    SELECT p.*,
+      (SELECT COUNT(*)::int FROM post_likes WHERE post_id = p.id) AS like_count
+    FROM posts p
+    ORDER BY p.created_at DESC
+    LIMIT 50
+  `;
+
+  let liked = new Set();
+  if (userId) {
+    const lRows = await sql`SELECT post_id FROM post_likes WHERE user_id=${userId}`;
+    liked = new Set(lRows.map(r => r.post_id));
+  }
+
+  const { lat, lng, radius } = req.query;
+  let result = rows.map(r => ({ ...r, isLiked: liked.has(r.id) }));
+
+  if (lat && lng) {
+    const uLat = parseFloat(lat), uLng = parseFloat(lng);
+    const km = parseFloat(radius) || 3;
+    result = result
+      .filter(r => r.lat != null && r.lng != null)
+      .map(r => ({ ...r, distKm: haversineKm(uLat, uLng, r.lat, r.lng) }))
+      .filter(r => r.distKm <= km)
+      .sort((a, b) => a.distKm - b.distKm);
+  }
+
+  res.json({ posts: result });
+});
+
+// 게시글 작성
+app.post("/api/posts", authMiddleware, async (req, res) => {
+  const { content, lat, lng } = req.body;
+  if (!content?.trim()) return res.status(400).json({ error: "내용을 입력해주세요." });
+  const userRow = await sql`SELECT name FROM users WHERE id=${req.user.id}`;
+  const userName = userRow[0]?.name || "익명";
+  const id = crypto.randomUUID();
+  await sql`INSERT INTO posts(id,user_id,user_name,content,lat,lng)
+    VALUES(${id},${req.user.id},${userName},${content.trim()},${lat||null},${lng||null})`;
+  const [created] = await sql`SELECT * FROM posts WHERE id=${id}`;
+  res.json({ post: { ...created, like_count: 0, isLiked: false } });
+});
+
+// 좋아요 토글
+app.post("/api/posts/:id/like", authMiddleware, async (req, res) => {
+  const exists = await sql`SELECT 1 FROM post_likes WHERE post_id=${req.params.id} AND user_id=${req.user.id}`;
+  if (exists.length > 0) {
+    await sql`DELETE FROM post_likes WHERE post_id=${req.params.id} AND user_id=${req.user.id}`;
+  } else {
+    await sql`INSERT INTO post_likes(post_id,user_id) VALUES(${req.params.id},${req.user.id})`;
+  }
+  const [cnt] = await sql`SELECT COUNT(*)::int AS c FROM post_likes WHERE post_id=${req.params.id}`;
+  res.json({ liked: exists.length === 0, likeCount: cnt.c });
+});
+
+// 게시글 삭제 (본인만)
+app.delete("/api/posts/:id", authMiddleware, async (req, res) => {
+  const row = await sql`SELECT user_id FROM posts WHERE id=${req.params.id}`;
+  if (!row[0]) return res.status(404).json({ error: "게시글을 찾을 수 없어요." });
+  if (row[0].user_id !== req.user.id) return res.status(403).json({ error: "본인 게시글만 삭제할 수 있어요." });
+  await sql`DELETE FROM posts WHERE id=${req.params.id}`;
+  res.json({ ok: true });
+});
+
+// ── 이벤트 API ───────────────────────────────────────────────────────────────
+
+// 거리 계산 (km)
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// 이벤트 목록 (auth optional)
+app.get("/api/events", async (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
+  let userId = null;
+  if (token) {
+    try { userId = jwt.verify(token, JWT_SECRET).id; } catch {}
+  }
+
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
+  const rows = await sql`
+    SELECT e.*,
+      (SELECT COUNT(*) FROM event_participants ep WHERE ep.event_id = e.id)::int AS participant_count
+    FROM events e
+    WHERE e.start_at >= ${new Date(now.getTime() - 3600 * 1000).toISOString()}
+      AND e.start_at <= ${cutoff.toISOString()}
+    ORDER BY e.start_at ASC
+  `;
+
+  let joined = new Set();
+  if (userId) {
+    const jRows = await sql`SELECT event_id FROM event_participants WHERE user_id=${userId}`;
+    joined = new Set(jRows.map(r => r.event_id));
+  }
+
+  const { lat, lng, radius } = req.query;
+  let result = rows.map(r => ({ ...r, isJoined: joined.has(r.id) }));
+
+  if (lat && lng) {
+    const userLat = parseFloat(lat), userLng = parseFloat(lng);
+    const km = parseFloat(radius) || 5;
+    result = result
+      .map(r => ({ ...r, distKm: haversineKm(userLat, userLng, r.lat, r.lng) }))
+      .filter(r => r.distKm <= km)
+      .sort((a, b) => a.distKm - b.distKm);
+  }
+
+  res.json({ events: result });
+});
+
+// 번개 이벤트 생성
+app.post("/api/events", authMiddleware, async (req, res) => {
+  const { courseId, title, description, startAt, lat, lng, maxParticipants } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: "제목을 입력해주세요." });
+  if (!startAt) return res.status(400).json({ error: "시작 시간을 입력해주세요." });
+  if (lat == null || lng == null) return res.status(400).json({ error: "위치 정보가 필요해요." });
+
+  const start = new Date(startAt);
+  if (isNaN(start.getTime())) return res.status(400).json({ error: "올바른 시간을 입력해주세요." });
+  if (start <= new Date()) return res.status(400).json({ error: "현재 시간 이후로 설정해주세요." });
+
+  const userRow = await sql`SELECT name FROM users WHERE id=${req.user.id}`;
+  const creatorName = userRow[0]?.name || "익명";
+
+  const id = crypto.randomUUID();
+  await sql`INSERT INTO events(id,course_id,type,title,description,start_at,created_by,creator_name,lat,lng,max_participants)
+    VALUES(${id},${courseId||null},'bungae',${title.trim()},${description||''},${start.toISOString()},${req.user.id},${creatorName},${parseFloat(lat)},${parseFloat(lng)},${maxParticipants||null})`;
+
+  const [created] = await sql`SELECT * FROM events WHERE id=${id}`;
+  res.json({ event: { ...created, participantCount: 0, isJoined: false } });
+});
+
+// 이벤트 참가
+app.post("/api/events/:id/join", authMiddleware, async (req, res) => {
+  const ev = await sql`SELECT * FROM events WHERE id=${req.params.id}`;
+  if (!ev[0]) return res.status(404).json({ error: "이벤트를 찾을 수 없어요." });
+  if (new Date(ev[0].start_at) < new Date()) return res.status(400).json({ error: "이미 종료된 이벤트에요." });
+
+  const count = await sql`SELECT COUNT(*)::int AS cnt FROM event_participants WHERE event_id=${req.params.id}`;
+  const cnt = count[0].cnt;
+  if (ev[0].max_participants && cnt >= ev[0].max_participants)
+    return res.status(400).json({ error: "정원이 가득 찼어요." });
+
+  try {
+    await sql`INSERT INTO event_participants(id,event_id,user_id) VALUES(${crypto.randomUUID()},${req.params.id},${req.user.id})`;
+  } catch { /* UNIQUE 중복 무시 */ }
+
+  const [updated] = await sql`SELECT COUNT(*)::int AS cnt FROM event_participants WHERE event_id=${req.params.id}`;
+  res.json({ participantCount: updated.cnt });
+});
+
+// 이벤트 참가 취소
+app.delete("/api/events/:id/join", authMiddleware, async (req, res) => {
+  await sql`DELETE FROM event_participants WHERE event_id=${req.params.id} AND user_id=${req.user.id}`;
+  const [updated] = await sql`SELECT COUNT(*)::int AS cnt FROM event_participants WHERE event_id=${req.params.id}`;
+  res.json({ participantCount: updated.cnt });
 });
 
 // ── 관리자 API ───────────────────────────────────────────────────────────────
@@ -1213,6 +1613,137 @@ setInterval(() => {
   const h = new Date().getHours();
   if (h === 9) sendAutoPushNotifications();
 }, 1000 * 60 * 60);
+
+// ── Walk Session API ──────────────────────────────────────────────────────────
+
+// 이벤트 자동 세션 생성 + 푸시 알림 (매 1분 실행)
+const notifiedEventIds = new Set();
+async function autoStartEventSessions() {
+  try {
+    const started = await sql`
+      SELECT id, title FROM events
+      WHERE start_at BETWEEN NOW() - INTERVAL '1 minute' AND NOW()
+    `;
+    for (const ev of started) {
+      const participants = await sql`
+        SELECT ep.user_id, u.name AS user_name
+        FROM event_participants ep
+        JOIN users u ON u.id = ep.user_id
+        WHERE ep.event_id = ${ev.id}
+      `;
+      for (const p of participants) {
+        const existing = await sql`
+          SELECT id FROM walk_sessions
+          WHERE event_id = ${ev.id} AND user_id = ${p.user_id} AND ended_at IS NULL
+        `;
+        if (existing.length > 0) continue;
+        const sid = crypto.randomUUID();
+        await sql`
+          INSERT INTO walk_sessions (id, event_id, user_id, user_name, started_at, updated_at)
+          VALUES (${sid}, ${ev.id}, ${p.user_id}, ${p.user_name}, NOW(), NOW())
+          ON CONFLICT DO NOTHING
+        `;
+      }
+      if (!notifiedEventIds.has(ev.id)) {
+        notifiedEventIds.add(ev.id);
+        for (const p of participants) {
+          sendPushToUser(p.user_id, {
+            title: "산책 이벤트가 시작됐어요!",
+            body: `${ev.title} — 산책 탭에서 친구들과 함께 걸어요`,
+            icon: "/icon-192.png",
+            data: { url: "/walk" },
+          });
+        }
+      }
+    }
+  } catch (err) { console.error("autoStartEventSessions:", err.message); }
+}
+setInterval(autoStartEventSessions, 60 * 1000);
+
+// POST /api/walk/start — 이미 세션 있으면 기존 sessionId 반환 (멱등)
+app.post("/api/walk/start", authMiddleware, async (req, res) => {
+  try {
+    const { eventId } = req.body;
+    if (eventId) {
+      const existing = await sql`
+        SELECT id FROM walk_sessions
+        WHERE event_id = ${eventId} AND user_id = ${req.user.id} AND ended_at IS NULL
+      `;
+      if (existing.length > 0) return res.json({ sessionId: existing[0].id });
+    }
+    const sessionId = crypto.randomUUID();
+    const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, req.user.id));
+    const userName = user?.name || "익명";
+    await sql`
+      INSERT INTO walk_sessions (id, event_id, user_id, user_name, started_at, updated_at)
+      VALUES (${sessionId}, ${eventId || null}, ${req.user.id}, ${userName}, NOW(), NOW())
+    `;
+    res.json({ sessionId });
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류" }); }
+});
+
+app.patch("/api/walk/update", authMiddleware, async (req, res) => {
+  try {
+    const { sessionId, lat, lng, distanceM } = req.body;
+    await sql`
+      UPDATE walk_sessions
+      SET lat=${lat}, lng=${lng}, distance_m=${distanceM || 0}, updated_at=NOW()
+      WHERE id=${sessionId} AND user_id=${req.user.id} AND ended_at IS NULL
+    `;
+    res.json({ ok: true });
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류" }); }
+});
+
+app.post("/api/walk/end", authMiddleware, async (req, res) => {
+  try {
+    const { sessionId, distanceM } = req.body;
+    await sql`
+      UPDATE walk_sessions
+      SET distance_m=${distanceM || 0}, ended_at=NOW(), updated_at=NOW()
+      WHERE id=${sessionId} AND user_id=${req.user.id} AND ended_at IS NULL
+    `;
+    res.json({ ok: true });
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류" }); }
+});
+
+// GET /api/walk/participants — GPS 있는 참가자 (지도용) + 전체 참가자 수
+app.get("/api/walk/participants", authMiddleware, async (req, res) => {
+  try {
+    const { event_id } = req.query;
+    if (!event_id) return res.json({ active: [], total: 0 });
+    const active = await sql`
+      SELECT id, user_id, user_name, lat, lng, distance_m
+      FROM walk_sessions
+      WHERE event_id=${event_id}
+        AND ended_at IS NULL
+        AND updated_at > NOW() - INTERVAL '90 seconds'
+        AND lat IS NOT NULL AND lng IS NOT NULL
+    `;
+    const allRows = await sql`
+      SELECT COUNT(*) AS cnt FROM walk_sessions
+      WHERE event_id=${event_id} AND ended_at IS NULL
+    `;
+    res.json({ active, total: Number(allRows[0]?.cnt || 0) });
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류" }); }
+});
+
+// GET /api/walk/active-event — 현재 사용자의 활성 이벤트 세션 조회
+app.get("/api/walk/active-event", authMiddleware, async (req, res) => {
+  try {
+    const rows = await sql`
+      SELECT ws.id AS session_id, ws.event_id, e.title, e.start_at, e.lat, e.lng
+      FROM walk_sessions ws
+      JOIN events e ON e.id = ws.event_id
+      WHERE ws.user_id = ${req.user.id}
+        AND ws.ended_at IS NULL
+        AND ws.event_id IS NOT NULL
+        AND e.start_at BETWEEN NOW() - INTERVAL '3 hours' AND NOW() + INTERVAL '30 minutes'
+      ORDER BY e.start_at DESC
+      LIMIT 1
+    `;
+    res.json(rows[0] || null);
+  } catch (err) { console.error(err.message); res.status(500).json({ error: "서버 오류" }); }
+});
 
 // ── 글로벌 에러 핸들러 ────────────────────────────────────────────────────────
 app.use((err, req, res, _next) => {

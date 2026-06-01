@@ -3,7 +3,6 @@ import { Home, MapPin, Route, PawPrint, LogOut } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { VoiceCommandFab } from "./VoiceCommandFab";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -36,9 +35,6 @@ export function Layout({ children }: LayoutProps) {
         {children}
       </main>
 
-      {/* AI 자연어 입력 FAB */}
-      {user && <VoiceCommandFab />}
-
       {/* Bottom Navigation */}
       <nav className="absolute bottom-0 left-0 right-0 bg-card border-t border-border/50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)] z-50 rounded-t-2xl px-2 pt-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
         <div className="flex justify-around items-center h-16">
@@ -58,7 +54,7 @@ export function Layout({ children }: LayoutProps) {
                 className="flex flex-col items-center justify-center gap-1.5 focus:outline-none group relative w-full"
               >
                 {isActive && (
-                  <div className="absolute -top-3 w-10 h-1 bg-primary rounded-b-full shadow-[0_2px_8px_rgba(255,107,53,0.5)]" />
+                  <div className="absolute -top-3 w-10 h-1 bg-primary rounded-b-full shadow-[0_2px_8px_hsl(var(--primary)/0.5)]" />
                 )}
                 <div 
                   className={cn(
